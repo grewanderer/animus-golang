@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "source": "todo_pilot.json",
+  "execution_order": ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"],
+  "phase_gate": {
+    "requires_all_tasks_done": true,
+    "requires_definition_of_done": true
+  }
+}
+

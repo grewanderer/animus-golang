@@ -1,0 +1,14 @@
+.git
+.github
+.cache
+.next
+frontend_landing/.next
+frontend_landing/node_modules
+frontend_landing/dist-test
+node_modules
+ui/.next
+ui/node_modules
+ui/dist-test
+**/__pycache__
+**/*.pyc
+

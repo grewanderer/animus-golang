@@ -1,0 +1,32 @@
+# Next.js build output
+.next/
+frontend/.next/
+frontend_landing/.next/
+
+# Dependencies
+node_modules/
+frontend_landing/node_modules/
+
+# Go
+bin/
+*.out
+.cache/
+
+# Python
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.venv/
+
+# Generated test builds
+frontend_landing/dist-test/
+
+# Environment (secrets)
+.env
+.env.*
+!.env.example
+frontend_landing/.env.local
+
+frontend_landing/
+
+ui/
