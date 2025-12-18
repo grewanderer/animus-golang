@@ -3,12 +3,12 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "animus-sdk"
+name = "animus-datalab"
 version = "0.1.0"
-description = "Animus DataPilot Python SDK"
+description = "Animus DataLab Python SDK"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-
