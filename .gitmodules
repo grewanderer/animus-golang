@@ -1,0 +1,3 @@
+[submodule "open/sdk"]
+	path = open/sdk
+	url = https://github.com/grewanderer/animus-datalab-sdk
