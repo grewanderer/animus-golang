@@ -10,20 +10,6 @@ permissions:
 jobs:
   lint-test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:14-alpine
-        env:
-          POSTGRES_USER: animus
-          POSTGRES_PASSWORD: animus
-          POSTGRES_DB: animus
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U animus -d animus"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -32,14 +18,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: frontend_landing/package-lock.json
       - run: make bootstrap
       - run: make lint
       - run: make test
-      - run: make migrate-up
-        env:
-          MIGRATE_DOCKER_CONTAINER: ${{ job.services.postgres.id }}

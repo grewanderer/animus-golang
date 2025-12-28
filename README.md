@@ -1,217 +1,189 @@
-````md
-<p align="center">
-  <img src="assets/banner.png" width="100%" alt="Animus Memory Core">
-</p>
+# Animus DataPilot
 
-<h1 align="center">Animus DataPilot</h1>
 <p align="center">
-  <em>Deterministic control plane for enterprise ML datasets, experiments, and lineage</em>
+  <img src="assets/banner.png" width="100%" alt="Animus DataPilot">
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-production--ready-0f172a?style=flat-square">
-  <img src="https://img.shields.io/badge/deployment-on--prem--first-0f172a?style=flat-square">
-  <img src="https://img.shields.io/badge/network-air--gapped--compatible-0f172a?style=flat-square">
-  <img src="https://img.shields.io/badge/go-1.22+-0f172a?style=flat-square">
+  <strong>Control plane for auditable, on-prem ML execution and lineage</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/status-production--ready-0f172a?style=flat-square" />
+  <img src="https://img.shields.io/badge/deployment-on--prem--first-0f172a?style=flat-square" />
+  <img src="https://img.shields.io/badge/network-air--gapped--compatible-0f172a?style=flat-square" />
+  <img src="https://img.shields.io/badge/model-open--core-0f172a?style=flat-square" />
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" />
 </p>
 
 ---
 
-## What is this?
+## Overview
 
-**Animus DataPilot** is an **enterprise-grade control plane** for managing:
+**Animus DataPilot** is an enterprise-grade control plane for governed machine-learning execution. It enables organizations to *prove* how models were trained by enforcing deterministic lineage, policy checks, and immutable audit records.
 
-- datasets and immutable dataset versions
-- quality gates and enforcement
-- experiments and CI-bound runs
-- full lineage (dataset → run → git commit)
-- auditable actions across the entire system
+The system is designed for environments where ML workflows must be explainable, reviewable, and defensible — including regulated, on-prem, and air-gapped deployments.
 
-This is **not**:
-- AutoML
-- a notebook platform
-- a SaaS-first product
-- a data labeling system
-
-This **is**:
-- deterministic
-- auditable
-- on-prem ready
-- air-gapped compatible
+Animus follows an **open-core architecture**:
+- open, stable integration interfaces (schemas, SDKs, documentation)
+- commercial control-plane implementation for production use
 
 ---
 
-## Design intent
+## Why Animus exists
 
-> Large organizations do not want magic.
-> They want control, immutability, and answers.
+Most ML failures in regulated environments are not caused by model quality, but by missing or unverifiable execution history.
 
-Animus DataPilot is designed for environments where:
-- outbound network access is restricted or forbidden
-- data must never leave the perimeter
-- every action must be explainable months later
-- CI/CD is the execution plane
-- UI is the control plane
+Common failure modes include:
+
+- datasets changing without traceability
+- pipeline behavior drifting over time
+- code revisions not tied to executions
+- implicit approvals and undocumented actions
+- audit evidence reconstructed manually after the fact
+
+Animus exists to make ML execution **provable, deterministic, and auditable by design**.
+
+---
+
+## Design principles
+
+### Immutability by default
+All datasets, lineage edges, and audit records are append-only and never mutated.
+
+### Audit is mandatory
+Every state-changing operation produces a verifiable audit event.
+
+### Explicit source of intent
+User intent is expressed via the control interface; authorization, validation, and persistence are enforced by backend services.
+
+### CI as the execution plane
+SDKs and integrations are designed for non-interactive execution in CI/CD systems.
+
+### On-prem first
+Cloud deployment is optional. Air-gapped environments are fully supported.
 
 ---
 
 ## High-level architecture
 
-```text
-┌──────────────────────────────┐
-│             UI               │  Control plane
-│   (Next.js + Tailwind)       │
-└──────────────┬───────────────┘
-               │
-┌──────────────▼───────────────┐
-│           Gateway            │  Auth · RBAC · Audit
-└──────────────┬───────────────┘
-               │
-┌──────────────▼───────────────┐
-│  Core Services (Go)          │
-│  ─ Dataset Registry          │
-│  ─ Quality                   │
-│  ─ Experiments               │
-│  ─ Lineage                   │
-│  ─ Audit                     │
-└──────────────┬───────────────┘
-               │
-┌──────────────▼───────────────┐
-│ Infrastructure               │
-│ ─ Postgres (metadata)        │
-│ ─ MinIO (artifacts)          │
-└──────────────────────────────┘
-````
-
-Everything is explicit.
-Nothing is inferred.
+<p align="center">
+  <img src="assets/uml.png" width="100%" alt="Animus DataPilot">
+</p>
 
 ---
 
-## Core principles
+## Trust and verification model
 
-* **Immutability by default**
-  Datasets, versions, experiments, lineage edges are never mutated.
+Animus is designed so that claims about ML execution can be independently verified.
 
-* **Audit is not optional**
-  Every write operation produces an audit event.
+Key properties:
 
-* **UI is the single source of truth**
-  No hidden state in SDKs or clients.
+- identifiers are content-derived or cryptographically bound
+- lineage edges are immutable
+- audit records are append-only
+- evidence can be exported and verified offline
+- no hidden or implicit state exists outside the control plane
 
-* **CI is the execution plane**
-  SDKs are designed for pipelines, not notebooks.
-
-* **On-prem first**
-  Cloud is optional. Air-gapped is supported.
+This allows auditors, security teams, or third parties to validate execution history without trusting runtime operators.
 
 ---
 
-## What is implemented
+## Typical integration flow
 
-### Services
+1. Register datasets and schemas
+2. Define quality and policy constraints
+3. Execute training or evaluation in CI
+4. Report execution metadata to Animus
+5. Generate immutable lineage and audit records
+6. Export evidence for review or compliance
 
-| Service            | Responsibility                            |
-| ------------------ | ----------------------------------------- |
-| `gateway`          | Auth, RBAC, request validation, audit     |
-| `dataset-registry` | Datasets and immutable versions           |
-| `quality`          | Declarative quality rules and enforcement |
-| `experiments`      | Experiments, runs, CI metadata            |
-| `lineage`          | Dataset → run → git lineage graph         |
-| `audit`            | Central audit log                         |
-| `ui`               | Control plane UI                          |
+All steps can be executed in fully on-prem or air-gapped environments.
 
-### SDKs
+---
 
-* **Python SDK**
+## Open vs commercial components
 
-  * Register experiment runs
-  * Attach metrics
-  * Bind Git metadata
-  * CI-safe, no outbound calls
+This repository contains the **open integration surface** used by client systems and CI pipelines.
 
-### Deployment
+### Included (open)
 
-* `docker-compose` for local development
-* Helm chart for Kubernetes
-* Air-gapped installation bundle
-* Deterministic demo scenario included
+- OpenAPI specifications
+- SDKs for CI integration
+- Demo tooling and reference workflows
+- Integration and operator documentation
+
+### Commercial (not included)
+
+- Control-plane services
+- Policy enforcement engine
+- Web UI
+- Audit and evidence storage backend
+- Identity, RBAC, and SSO integrations
+- Deployment automation and upgrades
+
+All commercial components operate strictly on top of the open interfaces defined here. No proprietary APIs are required to integrate with Animus.
 
 ---
 
 ## Repository structure
 
-```text
-.
-├── gateway/
-├── dataset-registry/
-├── quality/
-├── experiments/
-├── lineage/
-├── audit/
-├── sdk/
-│   └── python/
-├── frontend_landing/
-├── internal/
-│   └── platform/
-├── deploy/
-│   └── helm/
-├── migrations/
-├── docs/
-├── demo/
-└── Makefile
-```
+<p align="center">
+  <img src="assets/repository_stuct.png" width="100%" alt="Animus DataPilot">
+</p>
+
 
 ---
 
-## Getting started (local)
+## Getting started (open integration)
+
+Install the Python SDK in editable mode:
 
 ```bash
-make bootstrap
-make dev
-make migrate-up
+pip install -e open/sdk/python
 ```
 
-Run full verification:
+Run the demo client against an existing Animus gateway:
+
+```bash
+go run ./open/cmd/demo -gateway http://localhost:8080 -dataset open/demo/data/demo.csv
+```
+
+Run repository checks:
 
 ```bash
 make lint
 make test
-make e2e
 ```
-
----
-
-## Definition of Done (enforced)
-
-* no TODOs
-* no stub implementations
-* no fake data outside demo runner
-* every service compiles and runs
-* every API documented
-* UI renders real backend data
-
-If it does not pass `make test`, it does not exist.
 
 ---
 
 ## Documentation
 
-* [`docs/architecture.md`](docs/architecture.md)
-* [`docs/auth.md`](docs/auth.md)
-* [`docs/quality.md`](docs/quality.md)
-* [`docs/experiments.md`](docs/experiments.md)
-* [`docs/lineage.md`](docs/lineage.md)
-* [`docs/audit.md`](docs/audit.md)
-* [`docs/deploy.md`](docs/deploy.md)
-* [`docs/airgap.md`](docs/airgap.md)
-* [`docs/demo.md`](docs/demo.md)
+- [`open/docs/index.md`](open/docs/index.md)
+- [`open/docs/00-overview.md`](open/docs/00-overview.md)
+- [`open/docs/01-architecture.md`](open/docs/01-architecture.md)
+- [`open/docs/02-security-and-compliance.md`](open/docs/02-security-and-compliance.md)
+- [`open/docs/03-deployment.md`](open/docs/03-deployment.md)
+- [`open/docs/04-operations.md`](open/docs/04-operations.md)
+- [`open/docs/05-api.md`](open/docs/05-api.md)
+- [`open/docs/06-cli-and-usage.md`](open/docs/06-cli-and-usage.md)
+- [`open/docs/07-evidence-format.md`](open/docs/07-evidence-format.md)
+- [`open/docs/08-troubleshooting.md`](open/docs/08-troubleshooting.md)
+- [`open/docs/09-faq.md`](open/docs/09-faq.md)
+- [`open/docs/10-glossary.md`](open/docs/10-glossary.md)
+
+---
+
+## Security
+
+For vulnerability reporting, security questions, or coordinated disclosure, see [`SECURITY.md`](SECURITY.md).
 
 ---
 
 ## Intended audience
 
-* Enterprise ML platform teams
-* Regulated industries
-* Internal AI/ML enablement groups
-* Organizations tired of opaque pipelines
+- ML platform and infrastructure engineers
+- Security and compliance teams
+- Regulated organizations deploying ML
+- Internal AI enablement teams
