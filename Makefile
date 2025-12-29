@@ -4,6 +4,7 @@ GO ?= go
 PY ?= python3
 
 PY_SDK_DIR ?= open/sdk/python
+PY_SDK_SUBMODULE ?= open/sdk
 GO_PACKAGES ?= ./open/...
 
 CACHE_DIR := $(CURDIR)/.cache
@@ -29,6 +30,16 @@ lint:
 	@echo "==> go vet"
 	@$(GO) vet $(GO_PACKAGES)
 	@echo "==> python compileall"
+	@if [ ! -d "$(PY_SDK_DIR)/src" ]; then \
+		echo "Python SDK not found at $(PY_SDK_DIR)."; \
+		if [ "$(PY_SDK_DIR)" = "$(PY_SDK_SUBMODULE)/python" ] && [ -e .git ] && command -v git >/dev/null 2>&1; then \
+			echo "==> init submodule $(PY_SDK_SUBMODULE)"; \
+			git submodule update --init --recursive "$(PY_SDK_SUBMODULE)"; \
+		else \
+			echo "If you're using the submodule, run: git submodule update --init --recursive $(PY_SDK_SUBMODULE)"; \
+			exit 1; \
+		fi; \
+	fi
 	@PYTHONPATH="$(PY_SDK_DIR)/src" $(PY) -m compileall -q "$(PY_SDK_DIR)/src"
 
 test:
@@ -36,4 +47,14 @@ test:
 	@echo "==> go test"
 	@$(GO) test $(GO_PACKAGES)
 	@echo "==> python tests"
+	@if [ ! -d "$(PY_SDK_DIR)/tests" ]; then \
+		echo "Python SDK tests not found at $(PY_SDK_DIR)/tests."; \
+		if [ "$(PY_SDK_DIR)" = "$(PY_SDK_SUBMODULE)/python" ] && [ -e .git ] && command -v git >/dev/null 2>&1; then \
+			echo "==> init submodule $(PY_SDK_SUBMODULE)"; \
+			git submodule update --init --recursive "$(PY_SDK_SUBMODULE)"; \
+		else \
+			echo "If you're using the submodule, run: git submodule update --init --recursive $(PY_SDK_SUBMODULE)"; \
+			exit 1; \
+		fi; \
+	fi
 	@PYTHONPATH="$(PY_SDK_DIR)/src" $(PY) -m unittest discover -s "$(PY_SDK_DIR)/tests" -p 'test_*.py'
