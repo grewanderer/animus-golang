@@ -1,27 +1,138 @@
-# Animus DataPilot Documentation (Open)
+# Animus DataPilot — Open Integration Documentation
 
-This directory contains the open integration documentation set for Animus DataPilot. The canonical navigation entry is `index.md`.
+> **Open integration documentation for Animus DataPilot**  
+> A deterministic, on-prem control plane for governed ML execution, lineage, and auditability.
+
+This directory contains the **public documentation for the open integration layer** of Animus DataPilot:
+APIs, SDKs, CLI usage, evidence formats, and operational guidance.
+
+The proprietary control plane (UI, orchestration, policy engine, and backend services) is **not included** in this repository.
+
+---
 
 ## Start here
 
-- Documentation index: `index.md`
-- Overview: `00-overview.md`
-- Architecture: `01-architecture.md`
-- Security and compliance: `02-security-and-compliance.md`
+If you are new to Animus, follow this order:
 
-## Guides
+1. **Overview** → [`00-overview.md`](00-overview.md)  
+2. **Architecture** → [`01-architecture.md`](01-architecture.md)  
+3. **Security & compliance model** → [`02-security-and-compliance.md`](02-security-and-compliance.md)
 
-- Deployment notes (open repo scope): `03-deployment.md`
-- Operations notes (open repo scope): `04-operations.md`
-- API usage: `05-api.md`
-- CLI and usage flows: `06-cli-and-usage.md`
-- Evidence format: `07-evidence-format.md`
-- Troubleshooting: `08-troubleshooting.md`
-- FAQ: `09-faq.md`
-- Glossary: `10-glossary.md`
+These documents explain *what the system is*, *why it exists*, and *how it is designed*.
 
-## Related docs
+---
 
-- `index.md`
-- `00-overview.md`
-- `05-api.md`
+## Recommended reading paths
+
+### Evaluating Animus (architecture & trust)
+For platform, security, or compliance reviewers:
+
+- [`00-overview.md`](00-overview.md)
+- [`01-architecture.md`](01-architecture.md)
+- [`02-security-and-compliance.md`](02-security-and-compliance.md)
+
+---
+
+### Building an integration
+For engineers integrating CI pipelines or tools:
+
+- [`05-api.md`](05-api.md)
+- [`06-cli-and-usage.md`](06-cli-and-usage.md)
+- [`07-evidence-format.md`](07-evidence-format.md)
+
+---
+
+### Operating in production
+For operators and platform teams:
+
+- [`03-deployment.md`](03-deployment.md)
+- [`04-operations.md`](04-operations.md)
+- [`08-troubleshooting.md`](08-troubleshooting.md)
+
+---
+
+## Documentation map
+
+| File | Description |
+|------|-------------|
+| [`00-overview.md`](00-overview.md) | Product scope, goals, personas, and non-goals |
+| [`01-architecture.md`](01-architecture.md) | System components, data flow, trust boundaries |
+| [`02-security-and-compliance.md`](02-security-and-compliance.md) | Auth, evidence, audit posture, guarantees |
+| [`03-deployment.md`](03-deployment.md) | Deployment considerations for integrations |
+| [`04-operations.md`](04-operations.md) | Runtime operations, lifecycle, monitoring |
+| [`05-api.md`](05-api.md) | HTTP APIs and OpenAPI entry points |
+| [`06-cli-and-usage.md`](06-cli-and-usage.md) | CLI workflows and end-to-end examples |
+| [`07-evidence-format.md`](07-evidence-format.md) | Evidence bundle structure & verification |
+| [`08-troubleshooting.md`](08-troubleshooting.md) | Common integration issues and fixes |
+| [`09-faq.md`](09-faq.md) | Frequently asked questions |
+| [`10-glossary.md`](10-glossary.md) | Canonical terminology |
+
+---
+
+## Repository artifacts referenced here
+
+These documentation pages refer to the following repository components:
+
+- **OpenAPI specifications**  
+  → [`../api/openapi/`](../api/openapi/)
+
+- **Python SDK (CI / automation)**  
+  → [`../sdk/python/`](../sdk/python/)
+
+- **Demo CLI and sample datasets**  
+  → [`../cmd/demo/`](../cmd/demo/)  
+  → [`../demo/`](../demo/)
+
+---
+
+## Scope and guarantees
+
+This documentation covers **integration contracts only**.
+
+✔ Included:
+- Public schemas and APIs  
+- SDK usage patterns  
+- CLI flows  
+- Evidence formats  
+- Integration constraints  
+
+✘ Not included:
+- Control plane implementation
+- UI
+- Policy engine internals
+- Deployment automation
+- Commercial features
+
+All proprietary components operate **on top of the documented interfaces**.
+
+---
+
+## Stability & compatibility
+
+To keep integrations reliable:
+
+- File names and URLs are stable
+- Breaking changes are avoided
+- Semantic meaning is preserved across versions
+- New features are additive where possible
+
+If documentation changes affect integrations, they are reflected explicitly.
+
+---
+
+## Feedback & coordination
+
+For security topics, coordinated disclosure, or enterprise integration discussions,
+refer to the repository’s **SECURITY.md**.
+
+---
+
+### Tip
+
+If you are evaluating Animus for regulated or air-gapped environments, start with:
+
+➡️ [`02-security-and-compliance.md`](02-security-and-compliance.md)
+
+---
+
+© Animus DataPilot — Open Integration Documentation
