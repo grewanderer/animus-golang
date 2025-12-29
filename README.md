@@ -1,7 +1,7 @@
 # Animus DataPilot
 
 <p align="center">
-  <img src="assets/banner.png" width="100%" alt="Animus DataPilot">
+  <img src="assets/banner.webp" width="100%" alt="Animus DataPilot">
 </p>
 
 <p align="center">
