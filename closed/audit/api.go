@@ -5,21 +5,27 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/animus-labs/animus-go/closed/internal/auditexport"
+	"github.com/animus-labs/animus-go/closed/internal/domain"
 )
 
 type auditAPI struct {
-	logger *slog.Logger
-	db     *sql.DB
+	logger    *slog.Logger
+	db        *sql.DB
+	exportCfg auditexport.Config
 }
 
-func newAuditAPI(logger *slog.Logger, db *sql.DB) *auditAPI {
+func newAuditAPI(logger *slog.Logger, db *sql.DB, exportCfg auditexport.Config) *auditAPI {
 	return &auditAPI{
-		logger: logger,
-		db:     db,
+		logger:    logger,
+		db:        db,
+		exportCfg: exportCfg,
 	}
 }
 
@@ -30,10 +36,85 @@ func (api *auditAPI) register(mux *http.ServeMux) {
 }
 
 func (api *auditAPI) handleExport(w http.ResponseWriter, r *http.Request) {
-	api.writeJSON(w, http.StatusNotImplemented, map[string]any{
-		"error":  "export_not_configured",
-		"detail": "configure an audit exporter to enable streaming exports",
-	})
+	if api == nil || api.db == nil {
+		api.writeError(w, r, http.StatusServiceUnavailable, "export_unavailable")
+		return
+	}
+
+	if err := api.exportCfg.Validate(); err != nil {
+		api.writeError(w, r, http.StatusNotImplemented, "export_not_configured")
+		return
+	}
+
+	if strings.ToLower(strings.TrimSpace(api.exportCfg.Destination)) != "http" {
+		api.writeError(w, r, http.StatusNotImplemented, "export_destination_unsupported")
+		return
+	}
+	if strings.ToLower(strings.TrimSpace(api.exportCfg.Format)) != "ndjson" {
+		api.writeError(w, r, http.StatusNotImplemented, "export_format_unsupported")
+		return
+	}
+
+	var req exportRequest
+	if err := decodeJSON(r, &req); err != nil {
+		api.writeError(w, r, http.StatusBadRequest, "invalid_json")
+		return
+	}
+	projectID := strings.TrimSpace(req.ProjectID)
+	if projectID == "" {
+		api.writeError(w, r, http.StatusBadRequest, "project_id_required")
+		return
+	}
+	if req.StartTime != nil && req.EndTime != nil && req.EndTime.Before(*req.StartTime) {
+		api.writeError(w, r, http.StatusBadRequest, "invalid_time_range")
+		return
+	}
+
+	query, args := buildExportQuery(projectID, req.StartTime, req.EndTime)
+	rows, err := api.db.QueryContext(r.Context(), query, args...)
+	if err != nil {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	defer rows.Close()
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.WriteHeader(http.StatusOK)
+
+	exporter := auditexport.NewNDJSONExporter(w)
+	for rows.Next() {
+		var (
+			ev         domain.AuditEvent
+			reqID      sql.NullString
+			ip         sql.NullString
+			userAgent  sql.NullString
+			payloadRaw []byte
+		)
+		if err := rows.Scan(
+			&ev.EventID,
+			&ev.OccurredAt,
+			&ev.Actor,
+			&ev.Action,
+			&ev.ResourceType,
+			&ev.ResourceID,
+			&reqID,
+			&ip,
+			&userAgent,
+			&payloadRaw,
+			&ev.IntegritySHA256,
+		); err != nil {
+			return
+		}
+		ev.RequestID = strings.TrimSpace(reqID.String)
+		if ip.Valid {
+			ev.IP = net.ParseIP(strings.TrimSpace(ip.String))
+		}
+		ev.UserAgent = strings.TrimSpace(userAgent.String)
+		ev.Payload = decodePayload(payloadRaw)
+		if err := exporter.Export(r.Context(), ev); err != nil {
+			return
+		}
+	}
 }
 
 type auditEvent struct {
@@ -48,6 +129,12 @@ type auditEvent struct {
 	UserAgent       string          `json:"user_agent,omitempty"`
 	Payload         json.RawMessage `json:"payload"`
 	IntegritySHA256 string          `json:"integrity_sha256"`
+}
+
+type exportRequest struct {
+	ProjectID string     `json:"project_id"`
+	StartTime *time.Time `json:"start_time,omitempty"`
+	EndTime   *time.Time `json:"end_time,omitempty"`
 }
 
 func (api *auditAPI) handleListEvents(w http.ResponseWriter, r *http.Request) {
@@ -215,6 +302,52 @@ func (api *auditAPI) writeError(w http.ResponseWriter, r *http.Request, status i
 		"error":      code,
 		"request_id": r.Header.Get("X-Request-Id"),
 	})
+}
+
+func decodeJSON(r *http.Request, dst any) error {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		return err
+	}
+	if err := dec.Decode(&struct{}{}); err == nil {
+		return errors.New("multiple JSON values")
+	}
+	return nil
+}
+
+func buildExportQuery(projectID string, startTime *time.Time, endTime *time.Time) (string, []any) {
+	clauses := []string{"payload->>'project_id' = $1"}
+	args := []any{projectID}
+
+	if startTime != nil {
+		args = append(args, startTime.UTC())
+		clauses = append(clauses, "occurred_at >= $"+strconv.Itoa(len(args)))
+	}
+	if endTime != nil {
+		args = append(args, endTime.UTC())
+		clauses = append(clauses, "occurred_at <= $"+strconv.Itoa(len(args)))
+	}
+
+	query := `SELECT event_id, occurred_at, actor, action, resource_type, resource_id, request_id, ip, user_agent, payload, integrity_sha256
+		FROM audit_events`
+	if len(clauses) > 0 {
+		query += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	query += " ORDER BY event_id ASC"
+	return query, args
+}
+
+func decodePayload(raw []byte) domain.Metadata {
+	raw = normalizeJSON(raw)
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return domain.Metadata{}
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	return domain.Metadata(payload)
 }
 
 func normalizeJSON(raw []byte) json.RawMessage {

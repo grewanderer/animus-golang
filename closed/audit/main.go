@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/animus-labs/animus-go/closed/internal/auditexport"
 	"github.com/animus-labs/animus-go/closed/internal/platform/auditlog"
 	"github.com/animus-labs/animus-go/closed/internal/platform/auth"
 	"github.com/animus-labs/animus-go/closed/internal/platform/env"
@@ -28,6 +29,12 @@ func main() {
 	shutdownTimeout, err := env.Duration("AUDIT_SHUTDOWN_TIMEOUT", 10*time.Second)
 	if err != nil {
 		logger.Error("invalid env", "error", err)
+		os.Exit(2)
+	}
+
+	exportCfg, err := auditexport.ConfigFromEnv()
+	if err != nil {
+		logger.Error("invalid audit export config", "error", err)
 		os.Exit(2)
 	}
 
@@ -69,7 +76,7 @@ func main() {
 		),
 	)
 
-	api := newAuditAPI(logger, db)
+	api := newAuditAPI(logger, db, exportCfg)
 	api.register(mux)
 
 	handler := auth.Middleware{
