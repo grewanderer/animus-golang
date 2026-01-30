@@ -1,0 +1,13 @@
+run:
+  timeout: 5m
+  tests: true
+  skip-dirs:
+    - .cache
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - typecheck
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

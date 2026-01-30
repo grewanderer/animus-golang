@@ -1,10 +1,6 @@
 # Animus DataPilot
 
 <p align="center">
-  <img src="assets/banner.webp" width="100%" alt="Animus DataPilot">
-</p>
-
-<p align="center">
   <strong>Control plane for auditable, on-prem ML execution and lineage</strong>
 </p>
 
@@ -67,12 +63,6 @@ Cloud deployment is optional. Air-gapped environments are fully supported.
 
 ## High-level architecture
 
-<p align="center">
-  <img src="assets/uml.png" width="100%" alt="Animus DataPilot">
-</p>
-
----
-
 ## Trust and verification model
 
 Animus is designed so that claims about ML execution can be independently verified.
@@ -128,10 +118,10 @@ All commercial components operate strictly on top of the open interfaces defined
 
 ## Repository structure
 
-<p align="center">
-  <img src="assets/repository_stuct.png" width="100%" alt="Animus DataPilot">
-</p>
-
+- `closed/` — commercial services, UI, deploy, migrations, e2e
+- `open/` — open integration surface (OpenAPI, demo CLI, SDKs)
+- `docs/` — specs and technical requirements
+- `tools/` — CI helpers and scripts
 
 ---
 
@@ -154,24 +144,38 @@ Run repository checks:
 ```bash
 make lint
 make test
+make build
+```
+
+---
+
+## Development
+
+Format, lint, test, and build:
+
+```bash
+make fmt
+make lint
+make test
+make build
+```
+
+Install `golangci-lint` if missing:
+
+```bash
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 ```
 
 ---
 
 ## Documentation
 
-- [`open/docs/index.md`](open/docs/index.md)
-- [`open/docs/00-overview.md`](open/docs/00-overview.md)
-- [`open/docs/01-architecture.md`](open/docs/01-architecture.md)
-- [`open/docs/02-security-and-compliance.md`](open/docs/02-security-and-compliance.md)
-- [`open/docs/03-deployment.md`](open/docs/03-deployment.md)
-- [`open/docs/04-operations.md`](open/docs/04-operations.md)
-- [`open/docs/05-api.md`](open/docs/05-api.md)
-- [`open/docs/06-cli-and-usage.md`](open/docs/06-cli-and-usage.md)
-- [`open/docs/07-evidence-format.md`](open/docs/07-evidence-format.md)
-- [`open/docs/08-troubleshooting.md`](open/docs/08-troubleshooting.md)
-- [`open/docs/09-faq.md`](open/docs/09-faq.md)
-- [`open/docs/10-glossary.md`](open/docs/10-glossary.md)
+- [`docs/Итоговое техническое задание.md`](docs/Итоговое техническое задание.md)
+- [`open/api/README.md`](open/api/README.md)
+- [`open/sdk/README.md`](open/sdk/README.md)
+- [`open/sdk/python/README.md`](open/sdk/python/README.md)
+- [`open/demo/README.md`](open/demo/README.md)
+- [`open/demo/learn/README.md`](open/demo/learn/README.md)
 
 ---
 

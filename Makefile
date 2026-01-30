@@ -2,26 +2,37 @@ SHELL := /bin/bash
 
 GO ?= go
 PY ?= python3
+COMPOSE_BIN ?= docker compose -f closed/deploy/docker-compose.yml
 
 PY_SDK_DIR ?= open/sdk/python
 PY_SDK_SUBMODULE ?= open/sdk
-GO_PACKAGES ?= ./open/...
+GO_PACKAGES ?= ./...
+GOLANGCI_LINT ?= golangci-lint
+GO_FILES := $(shell find . -type f -name '*.go' -not -path './.cache/*' -not -path './.git/*')
 
 CACHE_DIR := $(CURDIR)/.cache
 export GOCACHE := $(CACHE_DIR)/go-build
 export GOMODCACHE := $(CACHE_DIR)/go-mod
 export GOTMPDIR := $(CACHE_DIR)/go-tmp
 
-.PHONY: bootstrap test lint
+.PHONY: bootstrap fmt test lint build dev
 
 bootstrap:
 	@mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(GOTMPDIR)"
 	@$(GO) mod tidy
 
+fmt:
+	@if [ -z "$(GO_FILES)" ]; then \
+		echo "No Go files found."; \
+		exit 0; \
+	fi
+	@$(GO) fmt ./...
+	@gofmt -w $(GO_FILES)
+
 lint:
 	@mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(GOTMPDIR)"
 	@echo "==> gofmt (check)"
-	@unformatted="$$(gofmt -l $$(find open -type f -name '*.go' -not -path './.cache/*'))"; \
+	@unformatted="$$(gofmt -l $(GO_FILES))"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "$$unformatted"; \
 		echo "gofmt check failed (run: gofmt -w <files>)"; \
@@ -29,6 +40,12 @@ lint:
 	fi
 	@echo "==> go vet"
 	@$(GO) vet $(GO_PACKAGES)
+	@echo "==> golangci-lint"
+	@if ! command -v $(GOLANGCI_LINT) >/dev/null 2>&1; then \
+		echo "golangci-lint not installed. Run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
+		exit 1; \
+	fi
+	@$(GOLANGCI_LINT) run
 	@echo "==> python compileall"
 	@if [ ! -d "$(PY_SDK_DIR)/src" ]; then \
 		echo "Python SDK not found at $(PY_SDK_DIR)."; \
@@ -58,3 +75,11 @@ test:
 		fi; \
 	fi
 	@PYTHONPATH="$(PY_SDK_DIR)/src" $(PY) -m unittest discover -s "$(PY_SDK_DIR)/tests" -p 'test_*.py'
+
+build:
+	@mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(GOTMPDIR)"
+	@echo "==> go build"
+	@$(GO) build $(GO_PACKAGES)
+
+dev:
+	@COMPOSE_BIN="$(COMPOSE_BIN)" ./closed/scripts/dev.sh
