@@ -12,6 +12,8 @@ type Store interface {
 	Get(ctx context.Context, bucket, key string) (io.ReadCloser, ObjectInfo, error)
 	Stat(ctx context.Context, bucket, key string) (ObjectInfo, error)
 	Delete(ctx context.Context, bucket, key string) error
+	PresignPut(ctx context.Context, bucket, key string, ttl time.Duration) (string, error)
+	PresignGet(ctx context.Context, bucket, key string, ttl time.Duration) (string, error)
 }
 
 type ObjectInfo struct {

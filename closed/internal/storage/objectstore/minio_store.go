@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	platformstore "github.com/animus-labs/animus-go/closed/internal/platform/objectstore"
 	"github.com/minio/minio-go/v7"
@@ -74,4 +75,32 @@ func (s *MinioStore) Delete(ctx context.Context, bucket, key string) error {
 		return fmt.Errorf("minio store not initialized")
 	}
 	return s.client.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{})
+}
+
+func (s *MinioStore) PresignPut(ctx context.Context, bucket, key string, ttl time.Duration) (string, error) {
+	if s == nil || s.client == nil {
+		return "", fmt.Errorf("minio store not initialized")
+	}
+	if ttl <= 0 {
+		ttl = 10 * time.Minute
+	}
+	u, err := s.client.PresignedPutObject(ctx, bucket, key, ttl)
+	if err != nil {
+		return "", err
+	}
+	return u.String(), nil
+}
+
+func (s *MinioStore) PresignGet(ctx context.Context, bucket, key string, ttl time.Duration) (string, error) {
+	if s == nil || s.client == nil {
+		return "", fmt.Errorf("minio store not initialized")
+	}
+	if ttl <= 0 {
+		ttl = 10 * time.Minute
+	}
+	u, err := s.client.PresignedGetObject(ctx, bucket, key, ttl, nil)
+	if err != nil {
+		return "", err
+	}
+	return u.String(), nil
 }
