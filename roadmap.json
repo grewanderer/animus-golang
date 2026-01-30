@@ -172,11 +172,25 @@
           "notes": "Helpers enforce immutable dataset versions and artifacts."
         },
         {
+          "id": "P1-MODEL-001",
+          "title": "Model lifecycle transitions",
+          "path": "closed/internal/domain/model_lifecycle.go",
+          "status": "done",
+          "notes": "Explicit allowed transitions for model promotion."
+        },
+        {
           "id": "P1-REPO-001",
           "title": "Repository interfaces and filters",
           "path": "closed/internal/repo",
           "status": "done",
-          "notes": "Storage mapping skeleton for core entities with append-only audit appender."
+          "notes": "Storage mapping interfaces for core entities."
+        },
+        {
+          "id": "P1-REPO-002",
+          "title": "Postgres repository implementations",
+          "path": "closed/internal/repo/postgres",
+          "status": "done",
+          "notes": "SQL-backed repositories for projects, datasets, runs, artifacts, models, and audit appender."
         },
         {
           "id": "P1-AUDIT-001",
@@ -194,32 +208,37 @@
         },
         {
           "id": "P1-DB-001",
-          "title": "Storage mappings (DB implementations)",
-          "path": "closed/migrations",
-          "status": "not_started",
-          "notes": "Existing migrations present; repository implementations pending."
+          "title": "Project and model migrations with scoping columns",
+          "path": "closed/migrations/000013_projects_models_scoping.up.sql",
+          "status": "done",
+          "notes": "Adds projects/models tables and project_id columns on core entities."
         }
       ],
       "artifacts": [
         {
           "type": "code",
           "path": "closed/internal/domain",
-          "description": "Core domain model definitions and validation."
+          "description": "Core domain model definitions, validation, and lifecycle rules."
         },
         {
           "type": "code",
-          "path": "closed/internal/repo",
-          "description": "Repository interfaces and filters."
+          "path": "closed/internal/repo/postgres",
+          "description": "Postgres repositories for core entities and audit append-only flow."
         },
         {
-          "type": "code",
-          "path": "closed/internal/auditexport",
-          "description": "Audit exporter interface and noop implementation."
+          "type": "migration",
+          "path": "closed/migrations/000013_projects_models_scoping.up.sql",
+          "description": "Projects/models tables and project scoping columns."
         },
         {
           "type": "code",
           "path": "closed/internal/artifacts",
           "description": "Artifact storage helper using object store abstraction."
+        },
+        {
+          "type": "code",
+          "path": "closed/internal/auditexport",
+          "description": "Audit exporter interface and noop implementation."
         }
       ],
       "last_updated": "2026-01-30"
@@ -450,6 +469,6 @@
     "active_phase_id": "P1",
     "target_area": "closed",
     "last_updated": "2026-01-30",
-    "notes": "P1 scaffolding started: core domain types, repository interfaces, audit exporter stub, and artifact storage wrapper."
+    "notes": "P1 scaffolding expanded: postgres repositories, model lifecycle, and project/model migrations."
   }
 }
