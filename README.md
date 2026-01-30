@@ -119,25 +119,12 @@ All commercial components operate strictly on top of the open interfaces defined
 ## Repository structure
 
 - `closed/` — commercial services, UI, deploy, migrations, e2e
-- `open/` — open integration surface (OpenAPI, demo CLI, SDKs)
 - `docs/` — specs and technical requirements
 - `tools/` — CI helpers and scripts
 
 ---
 
-## Getting started (open integration)
-
-Install the Python SDK in editable mode:
-
-```bash
-pip install -e open/sdk/python
-```
-
-Run the demo client against an existing Animus gateway:
-
-```bash
-go run ./open/cmd/demo -gateway http://localhost:8080 -dataset open/demo/data/demo.csv
-```
+## Getting started
 
 Run repository checks:
 
@@ -171,11 +158,9 @@ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 ## Documentation
 
 - [`docs/Итоговое техническое задание.md`](docs/Итоговое техническое задание.md)
-- [`open/api/README.md`](open/api/README.md)
-- [`open/sdk/README.md`](open/sdk/README.md)
-- [`open/sdk/python/README.md`](open/sdk/python/README.md)
-- [`open/demo/README.md`](open/demo/README.md)
-- [`open/demo/learn/README.md`](open/demo/learn/README.md)
+- [`docs/kubernetes-baseline.md`](docs/kubernetes-baseline.md)
+- [`docs/adr/0001-control-plane-data-plane.md`](docs/adr/0001-control-plane-data-plane.md)
+- [`docs/adr/0002-project-isolation.md`](docs/adr/0002-project-isolation.md)
 
 ---
 
