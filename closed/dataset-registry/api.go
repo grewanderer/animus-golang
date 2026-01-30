@@ -23,6 +23,7 @@ import (
 	"github.com/animus-labs/animus-go/closed/internal/platform/lineageevent"
 	"github.com/animus-labs/animus-go/closed/internal/platform/objectstore"
 	"github.com/animus-labs/animus-go/closed/internal/repo"
+	artifactsvc "github.com/animus-labs/animus-go/closed/internal/service/artifacts"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/minio/minio-go/v7"
@@ -36,9 +37,10 @@ type datasetRegistryAPI struct {
 	uploadMaxBytes int64
 	uploadTimeout  time.Duration
 	svc            *datasetService
+	artifactSvc    *artifactsvc.Service
 }
 
-func newDatasetRegistryAPI(logger *slog.Logger, db *sql.DB, store *minio.Client, storeCfg objectstore.Config, uploadMaxBytes int64, uploadTimeout time.Duration, svc *datasetService) *datasetRegistryAPI {
+func newDatasetRegistryAPI(logger *slog.Logger, db *sql.DB, store *minio.Client, storeCfg objectstore.Config, uploadMaxBytes int64, uploadTimeout time.Duration, svc *datasetService, artifactSvc *artifactsvc.Service) *datasetRegistryAPI {
 	if uploadMaxBytes <= 0 {
 		uploadMaxBytes = int64(2) << 30 // 2 GiB
 	}
@@ -53,6 +55,7 @@ func newDatasetRegistryAPI(logger *slog.Logger, db *sql.DB, store *minio.Client,
 		uploadMaxBytes: uploadMaxBytes,
 		uploadTimeout:  uploadTimeout,
 		svc:            svc,
+		artifactSvc:    artifactSvc,
 	}
 }
 
@@ -69,6 +72,10 @@ func (api *datasetRegistryAPI) register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /dataset-versions/{version_id}", api.handleGetDatasetVersion)
 	mux.HandleFunc("GET /dataset-versions/{version_id}/download", api.handleDownloadDatasetVersion)
+
+	mux.HandleFunc("POST /projects/{project_id}/artifacts", api.handleCreateArtifact)
+	mux.HandleFunc("GET /projects/{project_id}/artifacts/{artifact_id}", api.handleGetArtifact)
+	mux.HandleFunc("GET /projects/{project_id}/artifacts/{artifact_id}/download", api.handleDownloadArtifact)
 }
 
 type dataset struct {
@@ -95,6 +102,21 @@ type datasetVersion struct {
 	CreatedBy     string          `json:"created_by"`
 }
 
+type artifact struct {
+	ArtifactID     string          `json:"artifact_id"`
+	ProjectID      string          `json:"project_id"`
+	Kind           string          `json:"kind"`
+	ContentType    string          `json:"content_type,omitempty"`
+	ObjectKey      string          `json:"object_key"`
+	SizeBytes      int64           `json:"size_bytes,omitempty"`
+	SHA256         string          `json:"sha256"`
+	Metadata       json.RawMessage `json:"metadata"`
+	RetentionUntil *time.Time      `json:"retention_until,omitempty"`
+	LegalHold      bool            `json:"legal_hold"`
+	CreatedAt      time.Time       `json:"created_at"`
+	CreatedBy      string          `json:"created_by"`
+}
+
 type project struct {
 	ProjectID   string          `json:"project_id"`
 	Name        string          `json:"name"`
@@ -114,6 +136,16 @@ type createProjectRequest struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
 	Metadata    map[string]any `json:"metadata,omitempty"`
+}
+
+type createArtifactRequest struct {
+	Kind           string         `json:"kind"`
+	ContentType    string         `json:"content_type,omitempty"`
+	SizeBytes      int64          `json:"size_bytes,omitempty"`
+	SHA256         string         `json:"sha256"`
+	RetentionUntil *time.Time     `json:"retention_until,omitempty"`
+	LegalHold      bool           `json:"legal_hold,omitempty"`
+	Metadata       map[string]any `json:"metadata,omitempty"`
 }
 
 func (api *datasetRegistryAPI) handleCreateProject(w http.ResponseWriter, r *http.Request) {
@@ -844,6 +876,138 @@ func (api *datasetRegistryAPI) handleDownloadDatasetVersion(w http.ResponseWrite
 	_, _ = io.Copy(w, obj)
 }
 
+func (api *datasetRegistryAPI) handleCreateArtifact(w http.ResponseWriter, r *http.Request) {
+	if api == nil || api.artifactSvc == nil {
+		api.writeError(w, r, http.StatusServiceUnavailable, "artifact_service_unavailable")
+		return
+	}
+	projectID, ok := requireProjectScope(r)
+	if !ok {
+		api.writeError(w, r, http.StatusBadRequest, "project_id_required")
+		return
+	}
+	identity, ok := auth.IdentityFromContext(r.Context())
+	if !ok {
+		api.writeError(w, r, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req createArtifactRequest
+	if err := decodeJSON(r, &req); err != nil {
+		api.writeError(w, r, http.StatusBadRequest, "invalid_json")
+		return
+	}
+
+	result, err := api.artifactSvc.CreateArtifactUpload(
+		r.Context(),
+		projectID,
+		artifactsvc.CreateArtifactInput{
+			Kind:           strings.TrimSpace(req.Kind),
+			ContentType:    strings.TrimSpace(req.ContentType),
+			SizeBytes:      req.SizeBytes,
+			SHA256:         strings.TrimSpace(req.SHA256),
+			RetentionUntil: req.RetentionUntil,
+			LegalHold:      req.LegalHold,
+			Metadata:       req.Metadata,
+		},
+		buildArtifactAuditContext(r, identity),
+	)
+	if err != nil {
+		api.writeError(w, r, http.StatusBadRequest, "artifact_create_failed")
+		return
+	}
+
+	resp := map[string]any{
+		"artifact":   artifactResponse(result.Artifact),
+		"upload_url": result.UploadURL,
+	}
+	w.Header().Set("Location", "/projects/"+projectID+"/artifacts/"+result.Artifact.ID)
+	api.writeJSON(w, http.StatusCreated, resp)
+}
+
+func (api *datasetRegistryAPI) handleGetArtifact(w http.ResponseWriter, r *http.Request) {
+	if api == nil || api.artifactSvc == nil {
+		api.writeError(w, r, http.StatusServiceUnavailable, "artifact_service_unavailable")
+		return
+	}
+	projectID, ok := requireProjectScope(r)
+	if !ok {
+		api.writeError(w, r, http.StatusBadRequest, "project_id_required")
+		return
+	}
+	artifactID := strings.TrimSpace(r.PathValue("artifact_id"))
+	if artifactID == "" {
+		api.writeError(w, r, http.StatusBadRequest, "artifact_id_required")
+		return
+	}
+
+	item, err := api.artifactSvc.GetArtifact(r.Context(), projectID, artifactID)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			api.writeError(w, r, http.StatusNotFound, "not_found")
+			return
+		}
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	api.writeJSON(w, http.StatusOK, artifactResponse(item))
+}
+
+func (api *datasetRegistryAPI) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) {
+	if api == nil || api.artifactSvc == nil {
+		api.writeError(w, r, http.StatusServiceUnavailable, "artifact_service_unavailable")
+		return
+	}
+	projectID, ok := requireProjectScope(r)
+	if !ok {
+		api.writeError(w, r, http.StatusBadRequest, "project_id_required")
+		return
+	}
+	artifactID := strings.TrimSpace(r.PathValue("artifact_id"))
+	if artifactID == "" {
+		api.writeError(w, r, http.StatusBadRequest, "artifact_id_required")
+		return
+	}
+	identity, ok := auth.IdentityFromContext(r.Context())
+	if !ok {
+		api.writeError(w, r, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	result, err := api.artifactSvc.GetArtifactDownload(r.Context(), projectID, artifactID, buildArtifactAuditContext(r, identity))
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			api.writeError(w, r, http.StatusNotFound, "not_found")
+			return
+		}
+		api.writeError(w, r, http.StatusBadRequest, "artifact_download_failed")
+		return
+	}
+
+	api.writeJSON(w, http.StatusOK, map[string]any{
+		"artifact":     artifactResponse(result.Artifact),
+		"download_url": result.DownloadURL,
+	})
+}
+
+func artifactResponse(item domain.Artifact) artifact {
+	metadataJSON, _ := json.Marshal(item.Metadata)
+	return artifact{
+		ArtifactID:     item.ID,
+		ProjectID:      item.ProjectID,
+		Kind:           item.Kind,
+		ContentType:    item.ContentType,
+		ObjectKey:      item.ObjectKey,
+		SizeBytes:      item.SizeBytes,
+		SHA256:         item.SHA256,
+		Metadata:       metadataJSON,
+		RetentionUntil: item.RetentionUntil,
+		LegalHold:      item.LegalHold,
+		CreatedAt:      item.CreatedAt,
+		CreatedBy:      item.CreatedBy,
+	}
+}
+
 type countingWriter struct {
 	n int64
 }
@@ -874,6 +1038,30 @@ func buildAuditContext(r *http.Request, identity auth.Identity) auditContext {
 		Path:      r.URL.Path,
 		Service:   "dataset-registry",
 	}
+}
+
+func buildArtifactAuditContext(r *http.Request, identity auth.Identity) artifactsvc.AuditContext {
+	return artifactsvc.AuditContext{
+		Actor:     strings.TrimSpace(identity.Subject),
+		RequestID: r.Header.Get("X-Request-Id"),
+		IP:        requestIP(r.RemoteAddr),
+		UserAgent: r.UserAgent(),
+		Path:      r.URL.Path,
+		Service:   "dataset-registry",
+	}
+}
+
+func requireProjectScope(r *http.Request) (string, bool) {
+	projectID := strings.TrimSpace(r.PathValue("project_id"))
+	if projectID == "" {
+		return "", false
+	}
+	if ctxProjectID, ok := auth.ProjectIDFromContext(r.Context()); ok && strings.TrimSpace(ctxProjectID) != "" {
+		if strings.TrimSpace(ctxProjectID) != projectID {
+			return "", false
+		}
+	}
+	return projectID, true
 }
 
 func (api *datasetRegistryAPI) writeJSON(w http.ResponseWriter, status int, body any) {

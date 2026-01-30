@@ -17,6 +17,8 @@ import (
 	"github.com/animus-labs/animus-go/closed/internal/platform/objectstore"
 	"github.com/animus-labs/animus-go/closed/internal/platform/postgres"
 	repopg "github.com/animus-labs/animus-go/closed/internal/repo/postgres"
+	artifactsvc "github.com/animus-labs/animus-go/closed/internal/service/artifacts"
+	storageobjectstore "github.com/animus-labs/animus-go/closed/internal/storage/objectstore"
 )
 
 func main() {
@@ -108,12 +110,30 @@ func main() {
 		os.Exit(2)
 	}
 
+	artifactPresignTTL, err := env.Duration("DATASET_REGISTRY_ARTIFACT_PRESIGN_TTL", 10*time.Minute)
+	if err != nil {
+		logger.Error("invalid env", "error", err)
+		os.Exit(2)
+	}
+
 	projectStore := repopg.NewProjectStore(db)
 	datasetStore := repopg.NewDatasetStore(db)
+	artifactStore := repopg.NewArtifactStore(db)
 	auditAppender := repopg.NewAuditAppender(db, nil)
 
 	service := newDatasetService(projectStore, datasetStore, auditAppender)
-	api := newDatasetRegistryAPI(logger, db, storeClient, storeCfg, int64(uploadMaxMiB)<<20, uploadTimeout, service)
+	artifactObjectStore, err := storageobjectstore.NewMinioStoreWithClient(storeClient)
+	if err != nil {
+		logger.Error("artifact object store init failed", "error", err)
+		os.Exit(2)
+	}
+	artifactService, err := artifactsvc.NewService(artifactStore, artifactObjectStore, storeCfg.BucketArtifacts, artifactPresignTTL, auditAppender)
+	if err != nil {
+		logger.Error("artifact service init failed", "error", err)
+		os.Exit(2)
+	}
+
+	api := newDatasetRegistryAPI(logger, db, storeClient, storeCfg, int64(uploadMaxMiB)<<20, uploadTimeout, service, artifactService)
 	api.register(mux)
 
 	projectResolver := func(r *http.Request, identity auth.Identity) (string, error) {
