@@ -155,9 +155,73 @@
       "dependencies": [
         "P0"
       ],
-      "status": "not_started",
-      "work_items": [],
-      "artifacts": [],
+      "status": "in_progress",
+      "work_items": [
+        {
+          "id": "P1-DOM-001",
+          "title": "Core domain model types",
+          "path": "closed/internal/domain",
+          "status": "done",
+          "notes": "Project, Dataset, DatasetVersion, Run, PipelineRun, Artifact, Model, AuditEvent types with validation."
+        },
+        {
+          "id": "P1-IMM-001",
+          "title": "Immutability guards",
+          "path": "closed/internal/domain/immutability.go",
+          "status": "done",
+          "notes": "Helpers enforce immutable dataset versions and artifacts."
+        },
+        {
+          "id": "P1-REPO-001",
+          "title": "Repository interfaces and filters",
+          "path": "closed/internal/repo",
+          "status": "done",
+          "notes": "Storage mapping skeleton for core entities with append-only audit appender."
+        },
+        {
+          "id": "P1-AUDIT-001",
+          "title": "Audit exporter stub",
+          "path": "closed/internal/auditexport",
+          "status": "done",
+          "notes": "No-op exporter for append-only audit pipelines."
+        },
+        {
+          "id": "P1-ART-001",
+          "title": "Artifact storage abstraction",
+          "path": "closed/internal/artifacts",
+          "status": "done",
+          "notes": "Artifact store binds metadata to object storage interface."
+        },
+        {
+          "id": "P1-DB-001",
+          "title": "Storage mappings (DB implementations)",
+          "path": "closed/migrations",
+          "status": "not_started",
+          "notes": "Existing migrations present; repository implementations pending."
+        }
+      ],
+      "artifacts": [
+        {
+          "type": "code",
+          "path": "closed/internal/domain",
+          "description": "Core domain model definitions and validation."
+        },
+        {
+          "type": "code",
+          "path": "closed/internal/repo",
+          "description": "Repository interfaces and filters."
+        },
+        {
+          "type": "code",
+          "path": "closed/internal/auditexport",
+          "description": "Audit exporter interface and noop implementation."
+        },
+        {
+          "type": "code",
+          "path": "closed/internal/artifacts",
+          "description": "Artifact storage helper using object store abstraction."
+        }
+      ],
       "last_updated": "2026-01-30"
     },
     {
@@ -383,9 +447,9 @@
     }
   ],
   "implementation": {
-    "active_phase_id": "P0",
+    "active_phase_id": "P1",
     "target_area": "closed",
     "last_updated": "2026-01-30",
-    "notes": "Started P0 baseline: ADRs, runtimeexec guardrails, object store interface, and Kubernetes baseline notes."
+    "notes": "P1 scaffolding started: core domain types, repository interfaces, audit exporter stub, and artifact storage wrapper."
   }
 }
