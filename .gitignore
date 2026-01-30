@@ -1,5 +1,15 @@
 # Closed assets (kept locally, not committed)
-/closed/
+/closed/*
+!/closed/internal/
+!/closed/internal/**/*
+!/closed/migrations/
+!/closed/migrations/*.sql
+!/closed/experiments/
+!/closed/experiments/*.go
+!/closed/dataset-registry/
+!/closed/dataset-registry/*.go
+!/closed/audit/
+!/closed/audit/*.go
 
 # Next.js build output
 .next/
