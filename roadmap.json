@@ -1,0 +1,391 @@
+{
+  "roadmap_version": 1,
+  "generated_at": "2026-01-30",
+  "spec": {
+    "name": "Animus Datalab - Final Technical Specification (Production-Grade)",
+    "source_path": "docs/\u0418\u0442\u043e\u0433\u043e\u0432\u043e\u0435 \u0442\u0435\u0445\u043d\u0438\u0447\u0435\u0441\u043a\u043e\u0435 \u0437\u0430\u0434\u0430\u043d\u0438\u0435.md",
+    "user_reference": "Final Technical Specification.md"
+  },
+  "production_grade_target": {
+    "definition": "Production-grade means the platform can fully replace the current ML tooling stack with deterministic, auditable, secure, and operable workflows.",
+    "acceptance_criteria": [
+      "Entire ML lifecycle runs within a single Project without manual external stitching",
+      "Any run is reproducible from dataset + commit SHA + environment",
+      "All actions are audited and exportable",
+      "SSO and RBAC function end-to-end",
+      "Installation and upgrades are documented and automatable",
+      "No implicit state or hidden dependencies exist",
+      "HA control plane, observability, and backup/DR are validated"
+    ],
+    "final_gate_phase": "P8"
+  },
+  "phases": [
+    {
+      "id": "P0",
+      "name": "Architecture Baseline",
+      "goal": "Establish control/data plane separation and Kubernetes baseline with explicit system boundaries.",
+      "scope": [
+        "Control Plane vs Data Plane separation",
+        "No user code execution in Control Plane",
+        "Kubernetes baseline (single-cluster, multi-cluster readiness, air-gapped readiness)",
+        "Project isolation boundaries",
+        "Object storage baseline for artifacts"
+      ],
+      "deliverables": [
+        "Architecture decision records for plane separation",
+        "Runtime boundary enforcement for user execution",
+        "Cluster topology support matrix and air-gapped install notes",
+        "Project isolation model (no hidden cross-project dependencies)"
+      ],
+      "acceptance_criteria": [
+        "Control Plane never executes user code",
+        "Kubernetes baseline documented and validated",
+        "Project boundaries enforced by design"
+      ],
+      "dependencies": [],
+      "status": "done",
+      "work_items": [
+        {
+          "id": "P0-ADR-001",
+          "title": "Control/data plane separation ADR",
+          "path": "docs/adr/0001-control-plane-data-plane.md",
+          "status": "done",
+          "notes": "Documents control-plane vs data-plane boundaries and no user code in control plane."
+        },
+        {
+          "id": "P0-ADR-002",
+          "title": "Project isolation ADR",
+          "path": "docs/adr/0002-project-isolation.md",
+          "status": "done",
+          "notes": "Defines project boundary expectations."
+        },
+        {
+          "id": "P0-GUARD-001",
+          "title": "Runtime execution guardrail",
+          "path": "closed/internal/runtimeexec",
+          "status": "done",
+          "notes": "Execution code isolated; depguard rule prevents control plane imports."
+        },
+        {
+          "id": "P0-GUARD-002",
+          "title": "Depguard control-plane boundary",
+          "path": ".golangci.yml",
+          "status": "done",
+          "notes": "Depguard denies runtimeexec imports from control plane packages."
+        },
+        {
+          "id": "P0-K8S-001",
+          "title": "Kubernetes baseline notes",
+          "path": "docs/kubernetes-baseline.md",
+          "status": "done",
+          "notes": "Documents single-cluster, multi-cluster readiness, and air-gapped notes."
+        },
+        {
+          "id": "P0-OBJ-001",
+          "title": "Object store abstraction",
+          "path": "closed/internal/storage/objectstore",
+          "status": "done",
+          "notes": "S3-compatible interface with MinIO implementation."
+        },
+        {
+          "id": "P0-DOC-001",
+          "title": "README cleanup for docs",
+          "path": "README.md",
+          "status": "done",
+          "notes": "Removes stale open/ references and points to docs/."
+        }
+      ],
+      "artifacts": [
+        {
+          "type": "adr",
+          "path": "docs/adr/0001-control-plane-data-plane.md",
+          "description": "Control vs data plane separation and no user code in control plane."
+        },
+        {
+          "type": "adr",
+          "path": "docs/adr/0002-project-isolation.md",
+          "description": "Project isolation boundaries."
+        },
+        {
+          "type": "doc",
+          "path": "docs/kubernetes-baseline.md",
+          "description": "Kubernetes deployment baseline and air-gapped notes."
+        },
+        {
+          "type": "code",
+          "path": "closed/internal/runtimeexec",
+          "description": "Execution runtime primitives and executors."
+        },
+        {
+          "type": "code",
+          "path": "closed/internal/storage/objectstore",
+          "description": "S3-compatible object store abstraction."
+        },
+        {
+          "type": "config",
+          "path": ".golangci.yml",
+          "description": "Depguard rule enforcing control plane boundary."
+        }
+      ],
+      "last_updated": "2026-01-30"
+    },
+    {
+      "id": "P1",
+      "name": "Core Domain Model and Metadata",
+      "goal": "Implement immutable core entities and metadata persistence.",
+      "scope": [
+        "Project",
+        "Dataset and DatasetVersion (immutable)",
+        "Run and PipelineRun",
+        "Artifact lifecycle in object storage",
+        "Model with lifecycle states",
+        "AuditEvent (append-only, immutable)"
+      ],
+      "deliverables": [
+        "Entity schemas and storage mappings",
+        "Immutable write paths and append-only audit log",
+        "Object storage artifact management",
+        "Model lifecycle state machine"
+      ],
+      "acceptance_criteria": [
+        "All core entities persist with immutable guarantees",
+        "Audit events are append-only and exportable",
+        "Artifacts stored in object storage with lifecycle policies"
+      ],
+      "dependencies": [
+        "P0"
+      ],
+      "status": "not_started",
+      "work_items": [],
+      "artifacts": [],
+      "last_updated": "2026-01-30"
+    },
+    {
+      "id": "P2",
+      "name": "Execution and Orchestration",
+      "goal": "Deliver deterministic run execution with pipeline orchestration.",
+      "scope": [
+        "Declarative pipeline specs",
+        "Dependency graph execution",
+        "Queues, priorities, retries",
+        "Environment definitions and lock files",
+        "Production-run immutability checks"
+      ],
+      "deliverables": [
+        "Pipeline spec format and validator",
+        "Scheduler/queueing with retry policies",
+        "Environment definition artifacts and lock files",
+        "Deterministic run execution tied to dataset + commit SHA + environment"
+      ],
+      "acceptance_criteria": [
+        "Any run reproducible from dataset + commit SHA + environment",
+        "Retry/backoff behavior documented and idempotent",
+        "Pipeline dependencies enforced"
+      ],
+      "dependencies": [
+        "P1"
+      ],
+      "status": "not_started",
+      "work_items": [],
+      "artifacts": [],
+      "last_updated": "2026-01-30"
+    },
+    {
+      "id": "P3",
+      "name": "Data and Model Governance",
+      "goal": "Provide dataset/model registries, lineage, and quality rules.",
+      "scope": [
+        "Dataset registry (versions, schema, stats, lineage)",
+        "Quality rules and evaluations",
+        "Model registry with promotion workflow",
+        "Policy enforcement on datasets and models"
+      ],
+      "deliverables": [
+        "Dataset registry API and UI/CLI support",
+        "Quality rule definitions and evaluation records",
+        "Model registry with statuses (draft/validated/approved/deprecated)",
+        "Lineage capture for datasets, runs, models"
+      ],
+      "acceptance_criteria": [
+        "Dataset versions are immutable with schema and lineage",
+        "Model promotions follow defined workflow",
+        "Lineage is queryable and exportable"
+      ],
+      "dependencies": [
+        "P1",
+        "P2"
+      ],
+      "status": "not_started",
+      "work_items": [],
+      "artifacts": [],
+      "last_updated": "2026-01-30"
+    },
+    {
+      "id": "P4",
+      "name": "Developer Toolchain Surface",
+      "goal": "Enable end-to-end developer workflows in-platform.",
+      "scope": [
+        "Managed notebooks",
+        "Interactive terminals",
+        "Remote IDE access (VS Code/JetBrains via SSH/HTTP)",
+        "Dev environment templates (CPU/GPU)"
+      ],
+      "deliverables": [
+        "Workspace provisioning and lifecycle management",
+        "Remote IDE integration endpoints",
+        "Template library for dev environments"
+      ],
+      "acceptance_criteria": [
+        "Developers can run notebooks, terminals, and remote IDEs",
+        "Environment templates are selectable and reproducible"
+      ],
+      "dependencies": [
+        "P0",
+        "P1"
+      ],
+      "status": "not_started",
+      "work_items": [],
+      "artifacts": [],
+      "last_updated": "2026-01-30"
+    },
+    {
+      "id": "P5",
+      "name": "Integrations Matrix",
+      "goal": "Implement required external integrations.",
+      "scope": [
+        "Git/SCM integration with commit SHA enforcement",
+        "CI/CD webhooks (RunFinished, ModelApproved, DatasetVersionCreated)",
+        "Container registry integration with image digest binding",
+        "Identity (OIDC/SAML) and group-to-role mapping",
+        "Secrets management with short-lived secrets",
+        "S3-compatible storage (read-only sources, write-through artifacts)",
+        "Observability and SIEM export"
+      ],
+      "deliverables": [
+        "SCM connectors with CodeRef (repo_url, commit_sha)",
+        "Webhook dispatcher with event contracts",
+        "Registry integration with signature/digest support",
+        "OIDC/SAML auth and RBAC mapping",
+        "Vault-like secret retrieval with no UI exposure",
+        "Storage adapters and SIEM export"
+      ],
+      "acceptance_criteria": [
+        "Production runs enforce commit SHA",
+        "All required webhook events emitted",
+        "SSO and role mapping function end-to-end",
+        "Secrets never shown in UI or logs"
+      ],
+      "dependencies": [
+        "P1",
+        "P2"
+      ],
+      "status": "not_started",
+      "work_items": [],
+      "artifacts": [],
+      "last_updated": "2026-01-30"
+    },
+    {
+      "id": "P6",
+      "name": "Security and Audit",
+      "goal": "Enforce zero-trust security, RBAC, and mandatory audit.",
+      "scope": [
+        "Zero-trust and least privilege policies",
+        "Session TTL, forced logout, session limits",
+        "RBAC for Project, Dataset, Run, Model",
+        "Mandatory audit logging and export",
+        "Retention, secure deletion, legal hold hooks"
+      ],
+      "deliverables": [
+        "RBAC policy engine with resource-level enforcement",
+        "Session management policies",
+        "Audit pipeline with export interfaces",
+        "Retention and deletion workflows"
+      ],
+      "acceptance_criteria": [
+        "All state-changing actions audited and non-disableable",
+        "RBAC enforced at Project and resource levels",
+        "Retention and secure deletion policies enforced"
+      ],
+      "dependencies": [
+        "P1",
+        "P5"
+      ],
+      "status": "not_started",
+      "work_items": [],
+      "artifacts": [],
+      "last_updated": "2026-01-30"
+    },
+    {
+      "id": "P7",
+      "name": "Operational Readiness",
+      "goal": "Provide production-grade reliability and observability.",
+      "scope": [
+        "HA Control Plane",
+        "Idempotent operations and retry/backoff",
+        "Metrics, structured logs, tracing",
+        "Backup and DR with RPO/RTO",
+        "Helm/Kustomize deploy, upgrades/rollbacks, external DB support",
+        "Air-gapped installation support"
+      ],
+      "deliverables": [
+        "HA deployment topology",
+        "Observability stack integration",
+        "Backup and DR procedures",
+        "Deployment automation and rollback strategy"
+      ],
+      "acceptance_criteria": [
+        "Control Plane is HA with documented SLOs",
+        "Backup/restore procedures validated",
+        "Air-gapped installation documented"
+      ],
+      "dependencies": [
+        "P0",
+        "P1",
+        "P5",
+        "P6"
+      ],
+      "status": "not_started",
+      "work_items": [],
+      "artifacts": [],
+      "last_updated": "2026-01-30"
+    },
+    {
+      "id": "P8",
+      "name": "Quality Gates and Acceptance",
+      "goal": "Ensure CI/CD quality and final acceptance criteria.",
+      "scope": [
+        "Lint, unit, integration, and E2E tests",
+        "Security scanning and SBOM",
+        "End-to-end flow: git -> run -> artifacts -> model promotion",
+        "Acceptance criteria validation"
+      ],
+      "deliverables": [
+        "CI pipelines covering lint/unit/integration/E2E",
+        "Security scanning reports and SBOM artifacts",
+        "Acceptance test suite and sign-off checklist"
+      ],
+      "acceptance_criteria": [
+        "All acceptance criteria satisfied",
+        "End-to-end workflow passes in CI",
+        "Security scans and SBOM generation are automated"
+      ],
+      "dependencies": [
+        "P2",
+        "P3",
+        "P5",
+        "P6",
+        "P7"
+      ],
+      "status": "not_started",
+      "work_items": [],
+      "artifacts": [],
+      "last_updated": "2026-01-30"
+    }
+  ],
+  "implementation": {
+    "active_phase_id": "P0",
+    "target_area": "closed",
+    "last_updated": "2026-01-30",
+    "notes": "Started P0 baseline: ADRs, runtimeexec guardrails, object store interface, and Kubernetes baseline notes."
+  }
+}
