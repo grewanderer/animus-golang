@@ -62,7 +62,7 @@
         {
           "id": "P0-GUARD-001",
           "title": "Runtime execution guardrail",
-          "path": "closed/internal/runtimeexec",
+          "path": "closed/internal/runtimeexec/*.go",
           "status": "done",
           "notes": "Execution code isolated; depguard rule prevents control plane imports."
         },
@@ -83,7 +83,7 @@
         {
           "id": "P0-OBJ-001",
           "title": "Object store abstraction",
-          "path": "closed/internal/storage/objectstore",
+          "path": "closed/internal/storage/objectstore/*.go",
           "status": "done",
           "notes": "S3-compatible interface with MinIO implementation."
         },
@@ -113,12 +113,12 @@
         },
         {
           "type": "code",
-          "path": "closed/internal/runtimeexec",
+          "path": "closed/internal/runtimeexec/*.go",
           "description": "Execution runtime primitives and executors."
         },
         {
           "type": "code",
-          "path": "closed/internal/storage/objectstore",
+          "path": "closed/internal/storage/objectstore/*.go",
           "description": "S3-compatible object store abstraction."
         },
         {
@@ -160,85 +160,134 @@
         {
           "id": "P1-DOM-001",
           "title": "Core domain model types",
-          "path": "closed/internal/domain",
+          "path": "closed/internal/domain/*.go",
           "status": "done",
-          "notes": "Project, Dataset, DatasetVersion, Run, PipelineRun, Artifact, Model, AuditEvent types with validation."
+          "notes": "Core types defined; wired into APIs: partial (projects/datasets/dataset_versions). Remaining types scaffold only."
         },
         {
           "id": "P1-IMM-001",
           "title": "Immutability guards",
           "path": "closed/internal/domain/immutability.go",
           "status": "done",
-          "notes": "Helpers enforce immutable dataset versions and artifacts."
+          "notes": "Scaffold only; wired into APIs: no (DB triggers enforce immutability)."
         },
         {
           "id": "P1-MODEL-001",
           "title": "Model lifecycle transitions",
           "path": "closed/internal/domain/model_lifecycle.go",
           "status": "done",
-          "notes": "Explicit allowed transitions for model promotion."
+          "notes": "Scaffold only; wired into APIs: no."
         },
         {
           "id": "P1-REPO-001",
           "title": "Repository interfaces and filters",
-          "path": "closed/internal/repo",
+          "path": "closed/internal/repo/interfaces.go",
           "status": "done",
-          "notes": "Storage mapping interfaces for core entities."
+          "notes": "Repository interfaces; wired into APIs: yes via dataset-registry Postgres repos."
         },
         {
           "id": "P1-REPO-002",
           "title": "Postgres repository implementations",
-          "path": "closed/internal/repo/postgres",
+          "path": "closed/internal/repo/postgres/*.go",
           "status": "done",
-          "notes": "SQL-backed repositories for projects, datasets, runs, artifacts, models, and audit appender."
+          "notes": "Wired into APIs: yes (dataset-registry projects/datasets/versions, audit append)."
         },
         {
           "id": "P1-AUDIT-001",
           "title": "Audit exporter stub",
-          "path": "closed/internal/auditexport",
+          "path": "closed/internal/auditexport/exporter.go",
           "status": "done",
-          "notes": "No-op exporter for append-only audit pipelines."
+          "notes": "Scaffold only; wired into APIs: no (exporter pending)."
+        },
+        {
+          "id": "P1-AUDIT-002",
+          "title": "Audit export endpoint stub",
+          "path": "closed/audit/api.go",
+          "status": "done",
+          "notes": "Stub endpoint only; wired into APIs: yes (audit service)."
         },
         {
           "id": "P1-ART-001",
           "title": "Artifact storage abstraction",
-          "path": "closed/internal/artifacts",
+          "path": "closed/internal/artifacts/store.go",
           "status": "done",
-          "notes": "Artifact store binds metadata to object storage interface."
+          "notes": "Scaffold only; wired into APIs: no."
+        },
+        {
+          "id": "P1-ART-002",
+          "title": "Artifact retention metadata",
+          "path": "closed/internal/domain/artifact.go",
+          "status": "done",
+          "notes": "Retention metadata added; wired into APIs: no (repo only)."
+        },
+        {
+          "id": "P1-AUTH-001",
+          "title": "Project scoping context and resolver",
+          "path": "closed/internal/platform/auth/project.go",
+          "status": "done",
+          "notes": "Wired into APIs: yes (dataset-registry middleware)."
         },
         {
           "id": "P1-DB-001",
-          "title": "Project and model migrations with scoping columns",
+          "title": "Project/model migrations with scoping + immutability",
           "path": "closed/migrations/000013_projects_models_scoping.up.sql",
           "status": "done",
-          "notes": "Adds projects/models tables and project_id columns on core entities."
+          "notes": "Adds projects/models tables, project_id columns, indexes, FKs, retention fields, and immutability triggers."
+        },
+        {
+          "id": "P1-DB-002",
+          "title": "Down migration for project/model scoping",
+          "path": "closed/migrations/000013_projects_models_scoping.down.sql",
+          "status": "done",
+          "notes": "Reverts project scoping, indexes, triggers, and retention fields."
+        },
+        {
+          "id": "P1-WIRE-001",
+          "title": "Dataset-registry wiring (projects + dataset versions)",
+          "path": "closed/dataset-registry/api.go",
+          "status": "done",
+          "notes": "Wired into APIs: yes (project/dataset/dataset version create/list/get/download)."
+        },
+        {
+          "id": "P1-WIRE-002",
+          "title": "Dataset-registry service layer",
+          "path": "closed/dataset-registry/service.go",
+          "status": "done",
+          "notes": "Wired into APIs: yes (service layer with audit append)."
+        },
+        {
+          "id": "P1-WIRE-003",
+          "title": "Dataset-registry project resolver wiring",
+          "path": "closed/dataset-registry/main.go",
+          "status": "done",
+          "notes": "Wired into APIs: yes (project scoping enforcement via auth middleware)."
         }
       ],
       "artifacts": [
         {
           "type": "code",
-          "path": "closed/internal/domain",
+          "path": "closed/internal/domain/*.go",
           "description": "Core domain model definitions, validation, and lifecycle rules."
         },
         {
           "type": "code",
-          "path": "closed/internal/repo/postgres",
+          "path": "closed/internal/repo/postgres/*.go",
           "description": "Postgres repositories for core entities and audit append-only flow."
         },
         {
           "type": "migration",
           "path": "closed/migrations/000013_projects_models_scoping.up.sql",
-          "description": "Projects/models tables and project scoping columns."
+          "description": "Projects/models tables and project scoping columns, indexes, FKs, immutability triggers."
         },
         {
           "type": "code",
-          "path": "closed/internal/artifacts",
-          "description": "Artifact storage helper using object store abstraction."
+          "path": "closed/dataset-registry/service.go",
+          "description": "Service layer wiring for project/dataset/dataset_version operations."
         },
         {
           "type": "code",
-          "path": "closed/internal/auditexport",
-          "description": "Audit exporter interface and noop implementation."
+          "path": "closed/internal/platform/auth/project.go",
+          "description": "Project scoping extraction and context binding."
         }
       ],
       "last_updated": "2026-01-30"
@@ -469,6 +518,6 @@
     "active_phase_id": "P1",
     "target_area": "closed",
     "last_updated": "2026-01-30",
-    "notes": "P1 scaffolding expanded: postgres repositories, model lifecycle, and project/model migrations."
+    "notes": "P1 wired into dataset-registry with project scoping, audit append, and dataset version immutability."
   }
 }
