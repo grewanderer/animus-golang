@@ -158,6 +158,14 @@ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 ## Documentation
 
 - [`docs/Итоговое техническое задание.md`](docs/Итоговое техническое задание.md)
+
+### Artifact endpoints (dataset registry)
+
+Artifacts are registered in the control plane and transferred via short-lived pre-signed URLs (default 10 minutes).
+
+- `POST /projects/{project_id}/artifacts` → returns `upload_url` (direct PUT to object store)
+- `GET /projects/{project_id}/artifacts/{artifact_id}` → metadata
+- `GET /projects/{project_id}/artifacts/{artifact_id}/download` → returns `download_url` (direct GET from object store)
 - [`docs/kubernetes-baseline.md`](docs/kubernetes-baseline.md)
 - [`docs/adr/0001-control-plane-data-plane.md`](docs/adr/0001-control-plane-data-plane.md)
 - [`docs/adr/0002-project-isolation.md`](docs/adr/0002-project-isolation.md)

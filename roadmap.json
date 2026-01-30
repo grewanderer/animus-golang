@@ -155,7 +155,7 @@
       "dependencies": [
         "P0"
       ],
-      "status": "in_progress",
+      "status": "done",
       "work_items": [
         {
           "id": "P1-DOM-001",
@@ -209,16 +209,16 @@
         {
           "id": "P1-ART-001",
           "title": "Artifact storage abstraction",
-          "path": "closed/internal/artifacts/store.go",
+          "path": "closed/internal/service/artifacts/*.go, closed/internal/storage/objectstore/*.go, closed/dataset-registry/api.go",
           "status": "done",
-          "notes": "Scaffold only; wired into APIs: no."
+          "notes": "Presigned upload/download URLs and artifact service wiring; wired into APIs: yes."
         },
         {
           "id": "P1-ART-002",
           "title": "Artifact retention metadata",
           "path": "closed/internal/domain/artifact.go",
           "status": "done",
-          "notes": "Retention metadata added; wired into APIs: no (repo only)."
+          "notes": "Retention metadata + legal hold stored; wired into APIs: yes."
         },
         {
           "id": "P1-AUTH-001",
@@ -261,6 +261,20 @@
           "path": "closed/dataset-registry/main.go",
           "status": "done",
           "notes": "Wired into APIs: yes (project scoping enforcement via auth middleware)."
+        },
+        {
+          "id": "P1-DB-003",
+          "title": "Artifact schema migration",
+          "path": "closed/migrations/000014_project_artifacts.up.sql, closed/migrations/000014_project_artifacts.down.sql",
+          "status": "done",
+          "notes": "Artifacts table with project scoping, indexes, and immutability trigger."
+        },
+        {
+          "id": "P1-AUD-EXP-001",
+          "title": "Audit export MVP (NDJSON over HTTP)",
+          "path": "closed/audit/api.go, closed/internal/auditexport/*.go",
+          "status": "done",
+          "notes": "POST /export streams NDJSON filtered by project_id and time range."
         }
       ],
       "artifacts": [
@@ -288,6 +302,21 @@
           "type": "code",
           "path": "closed/internal/platform/auth/project.go",
           "description": "Project scoping extraction and context binding."
+        },
+        {
+          "type": "code",
+          "path": "closed/internal/service/artifacts/*.go",
+          "description": "Artifact service with presigned upload/download workflows."
+        },
+        {
+          "type": "migration",
+          "path": "closed/migrations/000014_project_artifacts.up.sql",
+          "description": "Artifacts table with project scoping and immutability trigger."
+        },
+        {
+          "type": "code",
+          "path": "closed/internal/auditexport/*.go",
+          "description": "Audit export configuration and NDJSON exporter."
         }
       ],
       "last_updated": "2026-01-30"
@@ -518,6 +547,6 @@
     "active_phase_id": "P1",
     "target_area": "closed",
     "last_updated": "2026-01-30",
-    "notes": "P1 wired into dataset-registry with project scoping, audit append, and dataset version immutability."
+    "notes": "P1 complete: artifacts presigned URLs, retention metadata, and audit export MVP delivered."
   }
 }
