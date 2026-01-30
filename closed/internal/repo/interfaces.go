@@ -34,7 +34,6 @@ type RunFilter struct {
 
 type ArtifactFilter struct {
 	ProjectID string
-	RunID     string
 	Kind      string
 	Limit     int
 }
@@ -73,11 +72,12 @@ type RunRepository interface {
 	UpdateRunStatus(ctx context.Context, projectID, id string, status string, endedAt *time.Time) error
 }
 
-// ArtifactRepository manages run artifacts.
+// ArtifactRepository manages project-scoped artifacts.
 type ArtifactRepository interface {
-	CreateArtifact(ctx context.Context, artifact domain.Artifact) error
+	CreateArtifact(ctx context.Context, projectID string, artifact domain.Artifact) (domain.Artifact, error)
 	GetArtifact(ctx context.Context, projectID, id string) (domain.Artifact, error)
 	ListArtifacts(ctx context.Context, filter ArtifactFilter) ([]domain.Artifact, error)
+	UpdateRetention(ctx context.Context, projectID, id string, retentionUntil *time.Time, legalHold bool) error
 }
 
 // ModelRepository manages model registry entries.

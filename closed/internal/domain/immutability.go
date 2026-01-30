@@ -46,11 +46,14 @@ func EnsureArtifactImmutable(before, after Artifact) error {
 	if before.ID != after.ID {
 		return fmt.Errorf("artifact id changed from %q to %q", before.ID, after.ID)
 	}
-	if before.RunID != after.RunID {
-		return errors.New("run id is immutable")
-	}
 	if before.ProjectID != after.ProjectID {
 		return errors.New("project id is immutable")
+	}
+	if before.Kind != after.Kind {
+		return errors.New("kind is immutable")
+	}
+	if before.ContentType != after.ContentType {
+		return errors.New("content type is immutable")
 	}
 	if before.ObjectKey != after.ObjectKey {
 		return errors.New("object key is immutable")

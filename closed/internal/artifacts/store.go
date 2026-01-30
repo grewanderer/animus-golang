@@ -24,18 +24,15 @@ type Store struct {
 
 // Upload describes an artifact upload request.
 type Upload struct {
-	ProjectID       string
-	RunID           string
-	ArtifactID      string
-	Kind            string
-	Name            string
-	Filename        string
-	ContentType     string
-	CreatedBy       string
-	Metadata        domain.Metadata
-	RetentionUntil  *time.Time
-	RetentionPolicy string
-	Body            []byte
+	ProjectID      string
+	ArtifactID     string
+	Kind           string
+	ContentType    string
+	CreatedBy      string
+	Metadata       domain.Metadata
+	RetentionUntil *time.Time
+	LegalHold      bool
+	Body           []byte
 }
 
 func NewStore(objectStore store.Store, bucket string) (*Store, error) {
@@ -56,9 +53,6 @@ func (s *Store) PutArtifact(ctx context.Context, upload Upload) (domain.Artifact
 	if strings.TrimSpace(upload.ArtifactID) == "" {
 		return domain.Artifact{}, errors.New("artifact id is required")
 	}
-	if strings.TrimSpace(upload.RunID) == "" {
-		return domain.Artifact{}, errors.New("run id is required")
-	}
 	if strings.TrimSpace(upload.ProjectID) == "" {
 		return domain.Artifact{}, errors.New("project id is required")
 	}
@@ -71,7 +65,7 @@ func (s *Store) PutArtifact(ctx context.Context, upload Upload) (domain.Artifact
 	sha := sha256.Sum256(body)
 	sum := hex.EncodeToString(sha[:])
 
-	objectKey := fmt.Sprintf("runs/%s/%s", upload.RunID, upload.ArtifactID)
+	objectKey := fmt.Sprintf("%s/artifacts/%s", upload.ProjectID, upload.ArtifactID)
 	err := s.store.Put(ctx, s.bucket, objectKey, bytes.NewReader(body), size, strings.TrimSpace(upload.ContentType))
 	if err != nil {
 		return domain.Artifact{}, err
@@ -81,17 +75,14 @@ func (s *Store) PutArtifact(ctx context.Context, upload Upload) (domain.Artifact
 	artifact := domain.Artifact{
 		ID:              strings.TrimSpace(upload.ArtifactID),
 		ProjectID:       strings.TrimSpace(upload.ProjectID),
-		RunID:           strings.TrimSpace(upload.RunID),
 		Kind:            strings.TrimSpace(upload.Kind),
-		Name:            strings.TrimSpace(upload.Name),
-		Filename:        strings.TrimSpace(upload.Filename),
 		ContentType:     strings.TrimSpace(upload.ContentType),
 		ObjectKey:       objectKey,
 		SHA256:          sum,
 		SizeBytes:       size,
 		Metadata:        upload.Metadata,
 		RetentionUntil:  upload.RetentionUntil,
-		RetentionPolicy: strings.TrimSpace(upload.RetentionPolicy),
+		LegalHold:       upload.LegalHold,
 		CreatedAt:       createdAt,
 		CreatedBy:       strings.TrimSpace(upload.CreatedBy),
 		IntegritySHA256: sum,
