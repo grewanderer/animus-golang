@@ -1,0 +1,372 @@
+package auth
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/coreos/go-oidc/v3/oidc"
+	"golang.org/x/oauth2"
+)
+
+type OIDCService struct {
+	cfg          Config
+	provider     *oidc.Provider
+	verifier     *oidc.IDTokenVerifier
+	oauth2Config oauth2.Config
+}
+
+func NewOIDCService(ctx context.Context, cfg Config) (*OIDCService, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	if cfg.Mode != ModeOIDC {
+		return nil, fmt.Errorf("auth mode must be oidc (got %q)", cfg.Mode)
+	}
+
+	provider, err := oidc.NewProvider(ctx, cfg.OIDCIssuerURL)
+	if err != nil {
+		return nil, fmt.Errorf("oidc provider: %w", err)
+	}
+
+	verifier := provider.Verifier(&oidc.Config{ClientID: cfg.OIDCClientID})
+	oauth2Cfg := oauth2.Config{
+		ClientID:     cfg.OIDCClientID,
+		ClientSecret: cfg.OIDCClientSecret,
+		Endpoint:     provider.Endpoint(),
+		RedirectURL:  cfg.OIDCRedirectURL,
+		Scopes:       cfg.OIDCScopes,
+	}
+
+	return &OIDCService{
+		cfg:          cfg,
+		provider:     provider,
+		verifier:     verifier,
+		oauth2Config: oauth2Cfg,
+	}, nil
+}
+
+func (s *OIDCService) Authenticate(ctx context.Context, r *http.Request) (Identity, error) {
+	rawToken := tokenFromHeader(r)
+	if rawToken == "" {
+		rawToken = tokenFromCookie(r, s.cfg.SessionCookieName)
+	}
+	if rawToken == "" {
+		return Identity{}, ErrUnauthenticated
+	}
+
+	idToken, err := s.verifier.Verify(ctx, rawToken)
+	if err != nil {
+		return Identity{}, err
+	}
+
+	var claims map[string]any
+	if err := idToken.Claims(&claims); err != nil {
+		return Identity{}, err
+	}
+
+	subject, _ := claims["sub"].(string)
+	email := extractStringClaim(claims, s.cfg.EmailClaim)
+	roles := extractRolesClaim(claims, s.cfg.RolesClaim)
+
+	return Identity{
+		Subject: subject,
+		Email:   email,
+		Roles:   roles,
+	}, nil
+}
+
+func (s *OIDCService) LoginHandler() (http.HandlerFunc, error) {
+	if err := s.cfg.ValidateForLogin(); err != nil {
+		return nil, err
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		returnTo := safeReturnTo(r.URL.Query().Get("return_to"))
+
+		state, err := randomBase64URL(32)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal_error"})
+			return
+		}
+		verifier, err := randomBase64URL(32)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal_error"})
+			return
+		}
+		nonce, err := randomBase64URL(32)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal_error"})
+			return
+		}
+		challenge := pkceS256Challenge(verifier)
+
+		setShortCookie(w, "animus_oidc_state", state, s.cfg)
+		setShortCookie(w, "animus_oidc_verifier", verifier, s.cfg)
+		setShortCookie(w, "animus_oidc_nonce", nonce, s.cfg)
+		setShortCookie(w, "animus_return_to", returnTo, s.cfg)
+
+		redirectURL := s.oauth2Config.AuthCodeURL(
+			state,
+			oauth2.AccessTypeOnline,
+			oauth2.SetAuthURLParam("code_challenge", challenge),
+			oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+			oauth2.SetAuthURLParam("nonce", nonce),
+		)
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+	}, nil
+}
+
+func (s *OIDCService) CallbackHandler() (http.HandlerFunc, error) {
+	if err := s.cfg.ValidateForLogin(); err != nil {
+		return nil, err
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		stateQuery := r.URL.Query().Get("state")
+		code := r.URL.Query().Get("code")
+		if stateQuery == "" || code == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "missing_code_or_state"})
+			return
+		}
+
+		stateCookie := tokenFromCookie(r, "animus_oidc_state")
+		if stateCookie == "" || stateCookie != stateQuery {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_state"})
+			return
+		}
+
+		codeVerifier := tokenFromCookie(r, "animus_oidc_verifier")
+		nonceCookie := tokenFromCookie(r, "animus_oidc_nonce")
+		returnTo := safeReturnTo(tokenFromCookie(r, "animus_return_to"))
+		if codeVerifier == "" || nonceCookie == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "missing_pkce_or_nonce"})
+			return
+		}
+
+		exchangeCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+
+		token, err := s.oauth2Config.Exchange(exchangeCtx, code, oauth2.SetAuthURLParam("code_verifier", codeVerifier))
+		if err != nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "token_exchange_failed"})
+			return
+		}
+
+		rawIDToken, ok := token.Extra("id_token").(string)
+		if !ok || rawIDToken == "" {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "missing_id_token"})
+			return
+		}
+
+		idToken, err := s.verifier.Verify(exchangeCtx, rawIDToken)
+		if err != nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid_id_token"})
+			return
+		}
+
+		var nonceClaim struct {
+			Nonce string `json:"nonce"`
+		}
+		if err := idToken.Claims(&nonceClaim); err != nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid_id_token_claims"})
+			return
+		}
+		if nonceClaim.Nonce == "" || nonceClaim.Nonce != nonceCookie {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid_nonce"})
+			return
+		}
+
+		setSessionCookie(w, s.cfg.SessionCookieName, rawIDToken, s.cfg)
+		clearCookie(w, "animus_oidc_state", s.cfg)
+		clearCookie(w, "animus_oidc_verifier", s.cfg)
+		clearCookie(w, "animus_oidc_nonce", s.cfg)
+		clearCookie(w, "animus_return_to", s.cfg)
+
+		http.Redirect(w, r, returnTo, http.StatusFound)
+	}, nil
+}
+
+func (s *OIDCService) LogoutHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		clearCookie(w, s.cfg.SessionCookieName, s.cfg)
+		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+	}
+}
+
+func (s *OIDCService) SessionHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		identity, err := s.Authenticate(r.Context(), r)
+		if err != nil {
+			if errors.Is(err, ErrUnauthenticated) {
+				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+				return
+			}
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid_token"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"subject": identity.Subject,
+			"email":   identity.Email,
+			"roles":   identity.Roles,
+		})
+	}
+}
+
+func tokenFromHeader(r *http.Request) string {
+	authz := strings.TrimSpace(r.Header.Get("Authorization"))
+	if authz == "" {
+		return ""
+	}
+	parts := strings.SplitN(authz, " ", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	if strings.ToLower(parts[0]) != "bearer" {
+		return ""
+	}
+	return strings.TrimSpace(parts[1])
+}
+
+func tokenFromCookie(r *http.Request, name string) string {
+	cookie, err := r.Cookie(name)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(cookie.Value)
+}
+
+func randomBase64URL(nBytes int) (string, error) {
+	if nBytes <= 0 {
+		return "", errors.New("nBytes must be positive")
+	}
+	buf := make([]byte, nBytes)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+func pkceS256Challenge(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func safeReturnTo(raw string) string {
+	if raw == "" {
+		return "/"
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "/"
+	}
+	if u.IsAbs() {
+		return "/"
+	}
+	if !strings.HasPrefix(u.Path, "/") {
+		return "/"
+	}
+	if strings.HasPrefix(u.Path, "//") {
+		return "/"
+	}
+	return u.Path
+}
+
+func setShortCookie(w http.ResponseWriter, name string, value string, cfg Config) {
+	setCookie(w, name, value, 10*time.Minute, cfg)
+}
+
+func setSessionCookie(w http.ResponseWriter, name string, value string, cfg Config) {
+	setCookie(w, name, value, cfg.SessionCookieMaxAge, cfg)
+}
+
+func clearCookie(w http.ResponseWriter, name string, cfg Config) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     name,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   cfg.SessionCookieSecure,
+		SameSite: parseSameSite(cfg.SessionCookieSameSite),
+	})
+}
+
+func setCookie(w http.ResponseWriter, name string, value string, ttl time.Duration, cfg Config) {
+	if ttl <= 0 {
+		ttl = 10 * time.Minute
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     "/",
+		MaxAge:   int(ttl.Seconds()),
+		HttpOnly: true,
+		Secure:   cfg.SessionCookieSecure,
+		SameSite: parseSameSite(cfg.SessionCookieSameSite),
+	})
+}
+
+func parseSameSite(raw string) http.SameSite {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "strict":
+		return http.SameSiteStrictMode
+	case "none":
+		return http.SameSiteNoneMode
+	default:
+		return http.SameSiteLaxMode
+	}
+}
+
+func extractStringClaim(claims map[string]any, key string) string {
+	v, ok := claims[key]
+	if !ok {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
+}
+
+func extractRolesClaim(claims map[string]any, key string) []string {
+	v, ok := claims[key]
+	if !ok {
+		return nil
+	}
+	switch typed := v.(type) {
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			s, ok := item.(string)
+			if !ok {
+				continue
+			}
+			s = strings.ToLower(strings.TrimSpace(s))
+			if s == "" {
+				continue
+			}
+			out = append(out, s)
+		}
+		return out
+	case []string:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			s := strings.ToLower(strings.TrimSpace(item))
+			if s == "" {
+				continue
+			}
+			out = append(out, s)
+		}
+		return out
+	case string:
+		return parseCSV(typed)
+	default:
+		return nil
+	}
+}
