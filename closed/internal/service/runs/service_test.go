@@ -107,7 +107,7 @@ func (f *fakeRunRepo) UpdateDerivedStatus(ctx context.Context, projectID, runID 
 	if current == "" {
 		current = domain.RunStateCreated
 	}
-	if !domain.CanTransition(current, status) {
+	if !domain.CanTransitionRunState(current, status) {
 		return repo.ErrNotFound
 	}
 	record.Status = string(status)

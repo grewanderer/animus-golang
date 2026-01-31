@@ -157,7 +157,7 @@ func (s *RunSpecStore) UpdateDerivedStatus(ctx context.Context, projectID, runID
 	if current == next {
 		return nil
 	}
-	if !domain.CanTransition(current, next) {
+	if !domain.CanTransitionRunState(current, next) {
 		return fmt.Errorf("invalid status transition from %s to %s", current, next)
 	}
 	_, err := s.db.ExecContext(ctx, updateRunStatusQuery, string(next), projectID, runID)

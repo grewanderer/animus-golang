@@ -40,8 +40,8 @@ func NormalizeRunState(value string) RunState {
 	}
 }
 
-// CanTransition enforces forward-only state progression.
-func CanTransition(current, next RunState) bool {
+// CanTransitionRunState enforces forward-only state progression.
+func CanTransitionRunState(current, next RunState) bool {
 	if current == "" || next == "" {
 		return false
 	}
