@@ -64,6 +64,21 @@ type PlanRecord struct {
 	CreatedAt time.Time
 }
 
+type StepExecutionRecord struct {
+	ID           string
+	ProjectID    string
+	RunID        string
+	StepName     string
+	Attempt      int
+	Status       string
+	StartedAt    time.Time
+	FinishedAt   *time.Time
+	ErrorCode    string
+	ErrorMessage string
+	Result       []byte
+	SpecHash     string
+}
+
 // ProjectRepository manages Projects.
 type ProjectRepository interface {
 	Create(ctx context.Context, project domain.Project) error
@@ -109,6 +124,12 @@ type ModelRepository interface {
 type PlanRepository interface {
 	UpsertPlan(ctx context.Context, projectID, runID string, planJSON []byte) (PlanRecord, error)
 	GetPlan(ctx context.Context, projectID, runID string) (PlanRecord, error)
+}
+
+// StepExecutionRepository stores append-only step attempt records.
+type StepExecutionRepository interface {
+	InsertAttempt(ctx context.Context, record StepExecutionRecord) (StepExecutionRecord, bool, error)
+	ListByRun(ctx context.Context, projectID, runID string) ([]StepExecutionRecord, error)
 }
 
 // AuditEventAppender ensures append-only audit writes.
