@@ -226,7 +226,7 @@ func (api *experimentsAPI) handleGetRun(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	record, _, derived, err := stateSvc.DeriveAndPersist(r.Context(), projectID, runID)
+	record, derived, err := stateSvc.Derive(r.Context(), projectID, runID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			api.writeError(w, r, http.StatusNotFound, "not_found")

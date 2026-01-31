@@ -79,8 +79,16 @@ func (api *experimentsAPI) handlePlanRun(w http.ResponseWriter, r *http.Request)
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	runStoreTx := postgres.NewRunSpecStore(tx)
 	planStore := postgres.NewPlanStore(tx)
-	if planStore == nil {
+	stepStore := postgres.NewStepExecutionStore(tx)
+	if runStoreTx == nil || planStore == nil || stepStore == nil {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+
+	stateSvc := runs.New(runStoreTx, planStore, stepStore)
+	if stateSvc == nil {
 		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 		return
 	}
@@ -111,20 +119,25 @@ func (api *experimentsAPI) handlePlanRun(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := tx.Commit(); err != nil {
+	auditInfo := runs.AuditInfo{
+		Actor:     identity.Subject,
+		RequestID: r.Header.Get("X-Request-Id"),
+		UserAgent: r.UserAgent(),
+		IP:        requestIP(r.RemoteAddr),
+		Service:   "experiments",
+	}
+	auditAppender := runs.NewAuditAppender(tx)
+	if auditAppender == nil {
+		api.writeError(w, r, http.StatusInternalServerError, "audit_failed")
+		return
+	}
+	_, _, derived, err := stateSvc.DeriveAndPersistWithAudit(r.Context(), auditAppender, auditInfo, projectID, runID, runRecord.SpecHash)
+	if err != nil {
 		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 		return
 	}
 
-	planStore = postgres.NewPlanStore(api.db)
-	stepStore := postgres.NewStepExecutionStore(api.db)
-	stateSvc := runs.New(runStore, planStore, stepStore)
-	if stateSvc == nil {
-		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	_, _, derived, err := stateSvc.DeriveAndPersist(r.Context(), projectID, runID)
-	if err != nil {
+	if err := tx.Commit(); err != nil {
 		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 		return
 	}

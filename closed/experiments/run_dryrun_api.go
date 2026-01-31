@@ -115,17 +115,18 @@ func (api *experimentsAPI) handleDryRun(w http.ResponseWriter, r *http.Request) 
 		IP:        requestIP(r.RemoteAddr),
 		Service:   "experiments",
 	}
+	auditAppender := runs.NewAuditAppender(tx)
+	if auditAppender == nil {
+		api.writeError(w, r, http.StatusInternalServerError, "audit_failed")
+		return
+	}
 
-	_, prevState, derivedState, err := stateSvc.DeriveAndPersist(r.Context(), projectID, runID)
+	_, _, derivedState, err := stateSvc.DeriveAndPersistWithAudit(r.Context(), auditAppender, auditInfo, projectID, runID, runRecord.SpecHash)
 	if err != nil {
 		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 		return
 	}
 	if derivedState == domain.RunStateDryRunSucceeded || derivedState == domain.RunStateDryRunFailed {
-		if err := stateSvc.AppendRunTransitionAudit(r.Context(), tx, auditInfo, projectID, runID, runRecord.SpecHash, prevState, derivedState); err != nil {
-			api.writeError(w, r, http.StatusInternalServerError, "audit_failed")
-			return
-		}
 		records, err := stepStore.ListByRun(r.Context(), projectID, runID)
 		if err != nil {
 			api.writeError(w, r, http.StatusInternalServerError, "internal_error")
@@ -165,13 +166,9 @@ func (api *experimentsAPI) handleDryRun(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	prevRunning, err := stateSvc.MarkDryRunRunning(r.Context(), projectID, runID)
+	_, err = stateSvc.MarkDryRunRunningWithAudit(r.Context(), auditAppender, auditInfo, projectID, runID, runRecord.SpecHash)
 	if err != nil {
 		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	if err := stateSvc.AppendRunTransitionAudit(r.Context(), tx, auditInfo, projectID, runID, runRecord.SpecHash, prevRunning, domain.RunStateDryRunRunning); err != nil {
-		api.writeError(w, r, http.StatusInternalServerError, "audit_failed")
 		return
 	}
 
@@ -194,13 +191,9 @@ func (api *experimentsAPI) handleDryRun(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	_, prevFinal, derivedFinal, err := stateSvc.DeriveAndPersist(r.Context(), projectID, runID)
+	_, _, derivedFinal, err := stateSvc.DeriveAndPersistWithAudit(r.Context(), auditAppender, auditInfo, projectID, runID, runRecord.SpecHash)
 	if err != nil {
 		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	if err := stateSvc.AppendRunTransitionAudit(r.Context(), tx, auditInfo, projectID, runID, runRecord.SpecHash, prevFinal, derivedFinal); err != nil {
-		api.writeError(w, r, http.StatusInternalServerError, "audit_failed")
 		return
 	}
 

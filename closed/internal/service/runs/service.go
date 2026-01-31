@@ -19,6 +19,10 @@ type Service struct {
 	steps repo.StepExecutionRepository
 }
 
+type AuditAppender interface {
+	Append(ctx context.Context, event auditlog.Event) error
+}
+
 type AuditInfo struct {
 	Actor     string
 	RequestID string
@@ -38,8 +42,43 @@ func New(runRepo repo.RunRepository, planRepo repo.PlanRepository, stepRepo repo
 	}
 }
 
-// DeriveAndPersist computes the derived run state and persists it if needed.
-func (s *Service) DeriveAndPersist(ctx context.Context, projectID, runID string) (repo.RunRecord, domain.RunState, domain.RunState, error) {
+type auditAppenderFunc func(ctx context.Context, event auditlog.Event) error
+
+func (fn auditAppenderFunc) Append(ctx context.Context, event auditlog.Event) error {
+	return fn(ctx, event)
+}
+
+// NewAuditAppender adapts an auditlog.QueryRower into an AuditAppender.
+func NewAuditAppender(q auditlog.QueryRower) AuditAppender {
+	if q == nil {
+		return nil
+	}
+	return auditAppenderFunc(func(ctx context.Context, event auditlog.Event) error {
+		_, err := auditlog.Insert(ctx, q, event)
+		return err
+	})
+}
+
+// Derive computes the derived run state without mutating persisted status.
+func (s *Service) Derive(ctx context.Context, projectID, runID string) (repo.RunRecord, domain.RunState, error) {
+	runRecord, err := s.runs.GetRun(ctx, projectID, runID)
+	if err != nil {
+		return repo.RunRecord{}, "", err
+	}
+	planSpec, err := s.loadPlan(ctx, projectID, runID)
+	if err != nil {
+		return repo.RunRecord{}, "", err
+	}
+	stepExecutions, err := s.steps.ListByRun(ctx, projectID, runID)
+	if err != nil {
+		return repo.RunRecord{}, "", err
+	}
+	derived := state.DeriveRunState(planSpec, stepExecutions)
+	return runRecord, derived, nil
+}
+
+// deriveAndPersist computes the derived run state and persists it.
+func (s *Service) deriveAndPersist(ctx context.Context, projectID, runID string) (repo.RunRecord, domain.RunState, domain.RunState, error) {
 	runRecord, err := s.runs.GetRun(ctx, projectID, runID)
 	if err != nil {
 		return repo.RunRecord{}, "", "", err
@@ -63,8 +102,20 @@ func (s *Service) DeriveAndPersist(ctx context.Context, projectID, runID string)
 	return runRecord, prev, derived, nil
 }
 
-// MarkDryRunRunning transitions a run to dryrun_running after verifying a plan exists.
-func (s *Service) MarkDryRunRunning(ctx context.Context, projectID, runID string) (domain.RunState, error) {
+// DeriveAndPersistWithAudit computes and persists derived state, then emits a run-level audit event.
+func (s *Service) DeriveAndPersistWithAudit(ctx context.Context, appender AuditAppender, info AuditInfo, projectID, runID, specHash string) (repo.RunRecord, domain.RunState, domain.RunState, error) {
+	runRecord, prev, derived, err := s.deriveAndPersist(ctx, projectID, runID)
+	if err != nil {
+		return repo.RunRecord{}, "", "", err
+	}
+	if err := s.AppendRunTransitionAudit(ctx, appender, info, projectID, runID, specHash, prev, derived); err != nil {
+		return repo.RunRecord{}, "", "", err
+	}
+	return runRecord, prev, derived, nil
+}
+
+// markDryRunRunning transitions a run to dryrun_running after verifying a plan exists.
+func (s *Service) markDryRunRunning(ctx context.Context, projectID, runID string) (domain.RunState, error) {
 	runRecord, err := s.runs.GetRun(ctx, projectID, runID)
 	if err != nil {
 		return "", err
@@ -86,31 +137,44 @@ func (s *Service) MarkDryRunRunning(ctx context.Context, projectID, runID string
 	return prev, nil
 }
 
-// AppendRunTransitionAudit emits audit events aligned with run state transitions.
-func (s *Service) AppendRunTransitionAudit(ctx context.Context, q auditlog.QueryRower, info AuditInfo, projectID, runID, specHash string, from, to domain.RunState) error {
-	if q == nil {
-		return errors.New("audit queryer is required")
+// MarkDryRunRunningWithAudit transitions to dryrun_running and emits a run-level audit event.
+func (s *Service) MarkDryRunRunningWithAudit(ctx context.Context, appender AuditAppender, info AuditInfo, projectID, runID, specHash string) (domain.RunState, error) {
+	prev, err := s.markDryRunRunning(ctx, projectID, runID)
+	if err != nil {
+		return "", err
 	}
+	if err := s.AppendRunTransitionAudit(ctx, appender, info, projectID, runID, specHash, prev, domain.RunStateDryRunRunning); err != nil {
+		return "", err
+	}
+	return prev, nil
+}
+
+// AppendRunTransitionAudit emits a run-level audit event for a successful transition.
+func (s *Service) AppendRunTransitionAudit(ctx context.Context, appender AuditAppender, info AuditInfo, projectID, runID, specHash string, from, to domain.RunState) error {
+	if appender == nil {
+		return errors.New("audit appender is required")
+	}
+	event, ok, err := BuildRunTransitionEvent(info, projectID, runID, specHash, from, to)
+	if err != nil || !ok {
+		return err
+	}
+	return appender.Append(ctx, *event)
+}
+
+// BuildRunTransitionEvent returns a run-level audit event for a transition.
+// It returns ok=false when no event should be emitted.
+func BuildRunTransitionEvent(info AuditInfo, projectID, runID, specHash string, from, to domain.RunState) (*auditlog.Event, bool, error) {
 	if strings.TrimSpace(info.Actor) == "" {
-		return errors.New("audit actor is required")
+		return nil, false, errors.New("audit actor is required")
 	}
 	if from == to {
-		return nil
+		return nil, false, nil
 	}
-
-	var action string
-	switch to {
-	case domain.RunStateDryRunRunning:
-		action = "dry_run.started"
-	case domain.RunStateDryRunSucceeded:
-		action = "dry_run.completed"
-	case domain.RunStateDryRunFailed:
-		action = "dry_run.failed"
-	default:
-		return nil
+	action := transitionAction(to)
+	if action == "" {
+		return nil, false, nil
 	}
-
-	_, err := auditlog.Insert(ctx, q, auditlog.Event{
+	event := auditlog.Event{
 		Actor:        info.Actor,
 		Action:       action,
 		ResourceType: "run",
@@ -126,8 +190,8 @@ func (s *Service) AppendRunTransitionAudit(ctx context.Context, q auditlog.Query
 			"from":       string(from),
 			"to":         string(to),
 		},
-	})
-	return err
+	}
+	return &event, true, nil
 }
 
 func (s *Service) loadPlan(ctx context.Context, projectID, runID string) (*domain.ExecutionPlan, error) {
@@ -143,4 +207,19 @@ func (s *Service) loadPlan(ctx context.Context, projectID, runID string) (*domai
 		return nil, err
 	}
 	return &parsed, nil
+}
+
+func transitionAction(to domain.RunState) string {
+	switch to {
+	case domain.RunStatePlanned:
+		return "run.planned"
+	case domain.RunStateDryRunRunning:
+		return "dry_run.started"
+	case domain.RunStateDryRunSucceeded:
+		return "dry_run.completed"
+	case domain.RunStateDryRunFailed:
+		return "dry_run.failed"
+	default:
+		return ""
+	}
 }

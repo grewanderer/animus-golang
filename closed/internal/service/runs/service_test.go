@@ -6,10 +6,11 @@ import (
 
 	"github.com/animus-labs/animus-go/closed/internal/domain"
 	"github.com/animus-labs/animus-go/closed/internal/execution/plan"
+	"github.com/animus-labs/animus-go/closed/internal/platform/auditlog"
 	"github.com/animus-labs/animus-go/closed/internal/repo"
 )
 
-func TestDeriveAndPersist(t *testing.T) {
+func TestDeriveAndPersistWithAudit(t *testing.T) {
 	runID := "run-1"
 	projectID := "proj-1"
 	runRepo := newFakeRunRepo(runID, projectID, string(domain.RunStateCreated))
@@ -35,7 +36,10 @@ func TestDeriveAndPersist(t *testing.T) {
 		t.Fatalf("expected service")
 	}
 
-	_, prev, derived, err := service.DeriveAndPersist(context.Background(), projectID, runID)
+	appender := &fakeAuditAppender{}
+	info := AuditInfo{Actor: "tester", Service: "tests"}
+
+	_, prev, derived, err := service.DeriveAndPersistWithAudit(context.Background(), appender, info, projectID, runID, "spec-hash")
 	if err != nil {
 		t.Fatalf("derive: %v", err)
 	}
@@ -50,7 +54,7 @@ func TestDeriveAndPersist(t *testing.T) {
 		{ProjectID: projectID, RunID: runID, StepName: "a", Attempt: 1, Status: "Succeeded"},
 		{ProjectID: projectID, RunID: runID, StepName: "b", Attempt: 1, Status: "Succeeded"},
 	}
-	_, prev, derived, err = service.DeriveAndPersist(context.Background(), projectID, runID)
+	_, prev, derived, err = service.DeriveAndPersistWithAudit(context.Background(), appender, info, projectID, runID, "spec-hash")
 	if err != nil {
 		t.Fatalf("derive: %v", err)
 	}
@@ -65,9 +69,180 @@ func TestDeriveAndPersist(t *testing.T) {
 func TestMarkDryRunRunningRequiresPlan(t *testing.T) {
 	runRepo := newFakeRunRepo("run-1", "proj-1", string(domain.RunStateCreated))
 	service := New(runRepo, &fakePlanRepo{plans: map[string]repo.PlanRecord{}}, &fakeStepRepo{})
-	if _, err := service.MarkDryRunRunning(context.Background(), "proj-1", "run-1"); err == nil {
+	appender := &fakeAuditAppender{}
+	info := AuditInfo{Actor: "tester", Service: "tests"}
+	if _, err := service.MarkDryRunRunningWithAudit(context.Background(), appender, info, "proj-1", "run-1", "spec-hash"); err == nil {
 		t.Fatalf("expected error when plan missing")
 	}
+}
+
+func TestStateMachineSuccessWithAudit(t *testing.T) {
+	ctx := context.Background()
+	runID := "run-1"
+	projectID := "proj-1"
+	specHash := "spec-hash"
+	runRepo := newFakeRunRepo(runID, projectID, string(domain.RunStateCreated))
+	planRepo := &fakePlanRepo{plans: map[string]repo.PlanRecord{}}
+	stepRepo := &fakeStepRepo{}
+
+	execPlan := domain.ExecutionPlan{
+		RunID:     runID,
+		ProjectID: projectID,
+		Steps: []domain.ExecutionPlanStep{
+			{Name: "a"},
+			{Name: "b"},
+		},
+	}
+	planJSON, err := plan.MarshalExecutionPlan(execPlan)
+	if err != nil {
+		t.Fatalf("marshal plan: %v", err)
+	}
+	planRepo.plans[runID] = repo.PlanRecord{RunID: runID, ProjectID: projectID, Plan: planJSON}
+
+	service := New(runRepo, planRepo, stepRepo)
+	if service == nil {
+		t.Fatalf("expected service")
+	}
+
+	appender := &fakeAuditAppender{}
+	info := AuditInfo{Actor: "tester", Service: "tests"}
+
+	_, _, derived, err := service.DeriveAndPersistWithAudit(ctx, appender, info, projectID, runID, specHash)
+	if err != nil {
+		t.Fatalf("derive planned: %v", err)
+	}
+	if derived != domain.RunStatePlanned {
+		t.Fatalf("expected planned, got %s", derived)
+	}
+	assertRunStatePersisted(t, runRepo, runID, derived)
+
+	if _, err := service.MarkDryRunRunningWithAudit(ctx, appender, info, projectID, runID, specHash); err != nil {
+		t.Fatalf("mark running: %v", err)
+	}
+	assertRunStatePersisted(t, runRepo, runID, domain.RunStateDryRunRunning)
+
+	stepRepo.executions = []repo.StepExecutionRecord{
+		{ProjectID: projectID, RunID: runID, StepName: "a", Attempt: 1, Status: "Succeeded"},
+		{ProjectID: projectID, RunID: runID, StepName: "b", Attempt: 1, Status: "Succeeded"},
+	}
+	_, _, derived, err = service.DeriveAndPersistWithAudit(ctx, appender, info, projectID, runID, specHash)
+	if err != nil {
+		t.Fatalf("derive completed: %v", err)
+	}
+	if derived != domain.RunStateDryRunSucceeded {
+		t.Fatalf("expected dryrun_succeeded, got %s", derived)
+	}
+	assertRunStatePersisted(t, runRepo, runID, derived)
+
+	if len(appender.events) != 3 {
+		t.Fatalf("expected 3 audit events, got %d", len(appender.events))
+	}
+	assertRunAuditEvent(t, appender.events[0], "run.planned", projectID, runID, specHash, string(domain.RunStateCreated), string(domain.RunStatePlanned))
+	assertRunAuditEvent(t, appender.events[1], "dry_run.started", projectID, runID, specHash, string(domain.RunStatePlanned), string(domain.RunStateDryRunRunning))
+	assertRunAuditEvent(t, appender.events[2], "dry_run.completed", projectID, runID, specHash, string(domain.RunStateDryRunRunning), string(domain.RunStateDryRunSucceeded))
+}
+
+func TestStateMachineFailureWithAudit(t *testing.T) {
+	ctx := context.Background()
+	runID := "run-fail"
+	projectID := "proj-1"
+	specHash := "spec-hash"
+	runRepo := newFakeRunRepo(runID, projectID, string(domain.RunStateCreated))
+	planRepo := &fakePlanRepo{plans: map[string]repo.PlanRecord{}}
+	stepRepo := &fakeStepRepo{}
+
+	execPlan := domain.ExecutionPlan{
+		RunID:     runID,
+		ProjectID: projectID,
+		Steps: []domain.ExecutionPlanStep{
+			{Name: "a"},
+		},
+	}
+	planJSON, err := plan.MarshalExecutionPlan(execPlan)
+	if err != nil {
+		t.Fatalf("marshal plan: %v", err)
+	}
+	planRepo.plans[runID] = repo.PlanRecord{RunID: runID, ProjectID: projectID, Plan: planJSON}
+
+	service := New(runRepo, planRepo, stepRepo)
+	appender := &fakeAuditAppender{}
+	info := AuditInfo{Actor: "tester", Service: "tests"}
+
+	if _, _, _, err := service.DeriveAndPersistWithAudit(ctx, appender, info, projectID, runID, specHash); err != nil {
+		t.Fatalf("derive planned: %v", err)
+	}
+	if _, err := service.MarkDryRunRunningWithAudit(ctx, appender, info, projectID, runID, specHash); err != nil {
+		t.Fatalf("mark running: %v", err)
+	}
+
+	stepRepo.executions = []repo.StepExecutionRecord{
+		{ProjectID: projectID, RunID: runID, StepName: "a", Attempt: 1, Status: "Failed"},
+	}
+	_, _, derived, err := service.DeriveAndPersistWithAudit(ctx, appender, info, projectID, runID, specHash)
+	if err != nil {
+		t.Fatalf("derive failed: %v", err)
+	}
+	if derived != domain.RunStateDryRunFailed {
+		t.Fatalf("expected dryrun_failed, got %s", derived)
+	}
+	assertRunStatePersisted(t, runRepo, runID, derived)
+
+	if len(appender.events) != 3 {
+		t.Fatalf("expected 3 audit events, got %d", len(appender.events))
+	}
+	assertRunAuditEvent(t, appender.events[2], "dry_run.failed", projectID, runID, specHash, string(domain.RunStateDryRunRunning), string(domain.RunStateDryRunFailed))
+}
+
+func assertRunStatePersisted(t *testing.T, repo *fakeRunRepo, runID string, expected domain.RunState) {
+	t.Helper()
+	record, ok := repo.records[runID]
+	if !ok {
+		t.Fatalf("missing run record %s", runID)
+	}
+	if record.Status != string(expected) {
+		t.Fatalf("expected persisted %s, got %s", expected, record.Status)
+	}
+}
+
+func assertRunAuditEvent(t *testing.T, event auditlog.Event, action, projectID, runID, specHash, from, to string) {
+	t.Helper()
+	if event.Action != action {
+		t.Fatalf("expected action %s, got %s", action, event.Action)
+	}
+	if event.ResourceType != "run" {
+		t.Fatalf("expected resource type run, got %s", event.ResourceType)
+	}
+	if event.ResourceID != runID {
+		t.Fatalf("expected resource id %s, got %s", runID, event.ResourceID)
+	}
+	payload, ok := event.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("expected payload map")
+	}
+	if payload["project_id"] != projectID {
+		t.Fatalf("expected project_id %s, got %v", projectID, payload["project_id"])
+	}
+	if payload["run_id"] != runID {
+		t.Fatalf("expected run_id %s, got %v", runID, payload["run_id"])
+	}
+	if payload["spec_hash"] != specHash {
+		t.Fatalf("expected spec_hash %s, got %v", specHash, payload["spec_hash"])
+	}
+	if payload["from"] != from {
+		t.Fatalf("expected from %s, got %v", from, payload["from"])
+	}
+	if payload["to"] != to {
+		t.Fatalf("expected to %s, got %v", to, payload["to"])
+	}
+}
+
+type fakeAuditAppender struct {
+	events []auditlog.Event
+}
+
+func (f *fakeAuditAppender) Append(ctx context.Context, event auditlog.Event) error {
+	f.events = append(f.events, event)
+	return nil
 }
 
 type fakeRunRepo struct {
