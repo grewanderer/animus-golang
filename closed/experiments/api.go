@@ -78,6 +78,9 @@ func (api *experimentsAPI) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /experiments", api.handleCreateExperiment)
 	mux.HandleFunc("GET /experiments/{experiment_id}", api.handleGetExperiment)
 
+	mux.HandleFunc("POST /projects/{project_id}/runs", api.handleCreateRun)
+	mux.HandleFunc("GET /projects/{project_id}/runs/{run_id}", api.handleGetRun)
+
 	mux.HandleFunc("GET /experiments/{experiment_id}/runs", api.handleListExperimentRuns)
 	mux.HandleFunc("POST /experiments/{experiment_id}/runs", api.handleCreateExperimentRun)
 	mux.HandleFunc("POST /experiments/runs:execute", api.handleExecuteExperimentRun)
