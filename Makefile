@@ -15,7 +15,7 @@ export GOCACHE := $(CACHE_DIR)/go-build
 export GOMODCACHE := $(CACHE_DIR)/go-mod
 export GOTMPDIR := $(CACHE_DIR)/go-tmp
 
-.PHONY: bootstrap fmt test lint build dev
+.PHONY: bootstrap fmt test lint build dev demo
 
 bootstrap:
 	@mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(GOTMPDIR)"
@@ -83,3 +83,6 @@ build:
 
 dev:
 	@COMPOSE_BIN="$(COMPOSE_BIN)" ./closed/scripts/dev.sh
+
+demo:
+	@ANIMUS_DEV_SKIP_UI=1 ./open/demo/quickstart.sh
