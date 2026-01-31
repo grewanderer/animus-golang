@@ -20,11 +20,12 @@ import (
 )
 
 type dryRunResponse struct {
-	RunID    string                      `json:"runId"`
-	Status   string                      `json:"status"`
-	State    string                      `json:"state"`
-	Existing bool                        `json:"existing"`
-	Steps    []executor.DryRunStepResult `json:"steps"`
+	RunID          string                      `json:"runId"`
+	Status         string                      `json:"status"`
+	State          string                      `json:"state"`
+	AttemptsByStep map[string]int              `json:"attemptsByStep,omitempty"`
+	Existing       bool                        `json:"existing"`
+	Steps          []executor.DryRunStepResult `json:"steps"`
 }
 
 type dryRunExecutionsResponse struct {
@@ -135,16 +136,18 @@ func (api *experimentsAPI) handleDryRun(w http.ResponseWriter, r *http.Request) 
 			api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 			return
 		}
+		attempts := deriveRunStateFromRecords(&execPlan, true, records).AttemptsMap
 		if err := tx.Commit(); err != nil {
 			api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 			return
 		}
 		api.writeJSON(w, http.StatusOK, dryRunResponse{
-			RunID:    runID,
-			Status:   dryRunStatusFromState(derivedState),
-			State:    string(derivedState),
-			Existing: true,
-			Steps:    buildDryRunSummary(execPlan, records),
+			RunID:          runID,
+			Status:         dryRunStatusFromState(derivedState),
+			State:          string(derivedState),
+			AttemptsByStep: attempts,
+			Existing:       true,
+			Steps:          buildDryRunSummary(execPlan, records),
 		})
 		return
 	}
@@ -155,16 +158,18 @@ func (api *experimentsAPI) handleDryRun(w http.ResponseWriter, r *http.Request) 
 			api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 			return
 		}
+		attempts := deriveRunStateFromRecords(&execPlan, true, records).AttemptsMap
 		if err := tx.Commit(); err != nil {
 			api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 			return
 		}
 		api.writeJSON(w, http.StatusOK, dryRunResponse{
-			RunID:    runID,
-			Status:   dryRunStatusFromState(derivedState),
-			State:    string(derivedState),
-			Existing: true,
-			Steps:    buildDryRunSummary(execPlan, records),
+			RunID:          runID,
+			Status:         dryRunStatusFromState(derivedState),
+			State:          string(derivedState),
+			AttemptsByStep: attempts,
+			Existing:       true,
+			Steps:          buildDryRunSummary(execPlan, records),
 		})
 		return
 	}
@@ -205,6 +210,7 @@ func (api *experimentsAPI) handleDryRun(w http.ResponseWriter, r *http.Request) 
 		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 		return
 	}
+	attempts := deriveRunStateFromRecords(&execPlan, true, records).AttemptsMap
 
 	if err := tx.Commit(); err != nil {
 		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
@@ -212,11 +218,12 @@ func (api *experimentsAPI) handleDryRun(w http.ResponseWriter, r *http.Request) 
 	}
 
 	api.writeJSON(w, http.StatusOK, dryRunResponse{
-		RunID:    runID,
-		Status:   dryRunStatusFromState(derivedFinal),
-		State:    string(derivedFinal),
-		Existing: result.Existing,
-		Steps:    buildDryRunSummary(execPlan, records),
+		RunID:          runID,
+		Status:         dryRunStatusFromState(derivedFinal),
+		State:          string(derivedFinal),
+		AttemptsByStep: attempts,
+		Existing:       result.Existing,
+		Steps:          buildDryRunSummary(execPlan, records),
 	})
 }
 
