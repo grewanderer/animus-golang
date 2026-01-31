@@ -19,6 +19,12 @@ Smoke check:
 make demo-smoke
 ```
 
+No-docker smoke check (requires running services):
+
+```bash
+DEMO_NO_DOCKER=1 DEMO_BASE_URL=http://localhost:8080 make demo-smoke
+```
+
 Expected output includes:
 - "==> starting demo stack"
 - "==> create project"
@@ -29,7 +35,7 @@ Expected output includes:
 
 ## Requirements
 - Go 1.22+
-- Docker and docker compose (or docker-compose)
+- Docker and docker compose (or docker-compose) for the full demo
 - curl (preferred) or python3
 
 ## What is real today

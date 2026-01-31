@@ -15,6 +15,11 @@ Smoke check:
 make demo-smoke
 ```
 
+No-docker smoke check (requires running services):
+
+```bash
+DEMO_NO_DOCKER=1 DEMO_BASE_URL=http://localhost:8080 make demo-smoke
+```
 Components:
 - `docker-compose.yml`: control plane + userspace demo stack.
 - `data/`: deterministic demo dataset.

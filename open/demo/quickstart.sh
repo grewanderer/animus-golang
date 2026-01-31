@@ -10,7 +10,7 @@ USERSPACE_PORT="${ANIMUS_USERSPACE_PORT:-8090}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-30}"
 HEALTH_POLL_SECONDS="${HEALTH_POLL_SECONDS:-1}"
 LOG_TAIL_LINES="${LOG_TAIL_LINES:-200}"
-DEMO_MODE="${ANIMUS_DEMO_MODE:-full}"
+DEMO_MODE="full"
 
 export ANIMUS_GATEWAY_URL="${ANIMUS_GATEWAY_URL:-http://localhost:${GATEWAY_PORT}}"
 export ANIMUS_USERSPACE_URL="${ANIMUS_USERSPACE_URL:-http://localhost:${USERSPACE_PORT}}"
@@ -26,13 +26,26 @@ export DATABASE_URL="${DATABASE_URL:-postgres://animus:animus@postgres:5432/anim
 
 COMPOSE_CMD=""
 
-require_tooling() {
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "docker is required" >&2
-    exit 1
-  fi
+usage() {
+  cat <<USAGE
+Usage: $0 [--smoke|--down]
+
+Options:
+  --smoke  Run smoke check mode (health checks only).
+  --down   Tear down demo compose stack.
+USAGE
+}
+
+require_http_tooling() {
   if ! command -v curl >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
     echo "curl (preferred) or python3 is required" >&2
+    exit 1
+  fi
+}
+
+require_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "docker is required for the full demo" >&2
     exit 1
   fi
 }
@@ -46,7 +59,12 @@ detect_compose_cmd() {
     COMPOSE_CMD="docker-compose"
     return
   fi
-  echo "docker compose (preferred) or docker-compose is required" >&2
+  cat <<MSG >&2
+Docker Compose is required for the full demo.
+Install Docker Desktop (includes 'docker compose') or the legacy 'docker-compose' CLI.
+If you only need a health-check smoke test, use:
+  DEMO_NO_DOCKER=1 make demo-smoke DEMO_BASE_URL=http://localhost:8080
+MSG
   exit 1
 }
 
@@ -352,7 +370,56 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-require_tooling
+if [ "${1:-}" = "--smoke" ]; then
+  DEMO_MODE="smoke"
+  shift
+elif [ "${1:-}" = "--down" ]; then
+  DEMO_MODE="down"
+  shift
+elif [ -n "${1:-}" ]; then
+  usage
+  exit 2
+fi
+
+require_http_tooling
+
+if [ "${DEMO_MODE}" = "down" ]; then
+  detect_compose_cmd
+  compose down -v
+  exit 0
+fi
+
+if [ "${DEMO_NO_DOCKER:-0}" = "1" ]; then
+  if [ "${DEMO_MODE}" != "smoke" ]; then
+    echo "Full demo requires Docker. Use --smoke with DEMO_NO_DOCKER=1 or install Docker." >&2
+    exit 1
+  fi
+  base_url="${DEMO_BASE_URL:-}"
+  if [ -z "${base_url}" ]; then
+    base_url="${ANIMUS_GATEWAY_URL}"
+  fi
+  if [ -z "${base_url}" ]; then
+    echo "DEMO_BASE_URL is required for no-docker smoke mode" >&2
+    exit 1
+  fi
+  echo "==> smoke check (no docker)"
+  if ! wait_for_health "${base_url}/api/experiments/healthz" "${HEALTH_TIMEOUT_SECONDS}" "${HEALTH_POLL_SECONDS}"; then
+    echo "experiments health check failed" >&2
+    exit 1
+  fi
+  if ! wait_for_health "${base_url}/api/dataset-registry/healthz" "${HEALTH_TIMEOUT_SECONDS}" "${HEALTH_POLL_SECONDS}"; then
+    echo "dataset-registry health check failed" >&2
+    exit 1
+  fi
+  if ! wait_for_health "${base_url}/api/audit/healthz" "${HEALTH_TIMEOUT_SECONDS}" "${HEALTH_POLL_SECONDS}"; then
+    echo "audit health check failed" >&2
+    exit 1
+  fi
+  echo "==> smoke check ok"
+  exit 0
+fi
+
+require_docker
 detect_compose_cmd
 
 echo "==> starting demo stack"
@@ -377,6 +444,20 @@ fi
 REQUEST_ID="${ANIMUS_DEMO_REQUEST_ID:-demo-$(date -u +%Y%m%dT%H%M%SZ)}"
 NAME_SUFFIX="${ANIMUS_DEMO_SUFFIX:-$(date -u +%Y%m%d%H%M%S)}"
 API_BASE="${ANIMUS_GATEWAY_URL}/api"
+
+if [ "${DEMO_MODE}" = "smoke" ]; then
+  echo "==> create project"
+  project_body=$(http_request "POST" "${API_BASE}/dataset-registry/projects" \
+    "{\"name\":\"demo-project-${NAME_SUFFIX}\",\"description\":\"Animus smoke demo\",\"metadata\":{\"source\":\"demo\"}}" \
+    "application/json" "X-Request-Id: ${REQUEST_ID}")
+  PROJECT_ID="$(json_get "${project_body}" "project_id")"
+  if [ -z "${PROJECT_ID}" ]; then
+    echo "project_id missing" >&2
+    exit 1
+  fi
+  echo "==> smoke check ok"
+  exit 0
+fi
 
 echo "==> manual steps"
 echo "  1) POST /api/dataset-registry/projects"
@@ -404,11 +485,6 @@ PROJECT_ID="$(json_get "${project_body}" "project_id")"
 if [ -z "${PROJECT_ID}" ]; then
   echo "project_id missing" >&2
   exit 1
-fi
-
-if [ "${DEMO_MODE}" = "smoke" ]; then
-  echo "==> smoke check ok"
-  exit 0
 fi
 
 PROJECT_HEADER="X-Project-Id: ${PROJECT_ID}"
