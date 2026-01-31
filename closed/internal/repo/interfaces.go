@@ -45,6 +45,25 @@ type ModelFilter struct {
 	Limit     int
 }
 
+type RunRecord struct {
+	ID             string
+	ProjectID      string
+	IdempotencyKey string
+	Status         string
+	PipelineSpec   []byte
+	RunSpec        []byte
+	SpecHash       string
+	CreatedAt      time.Time
+}
+
+type PlanRecord struct {
+	ID        string
+	RunID     string
+	ProjectID string
+	Plan      []byte
+	CreatedAt time.Time
+}
+
 // ProjectRepository manages Projects.
 type ProjectRepository interface {
 	Create(ctx context.Context, project domain.Project) error
@@ -66,10 +85,8 @@ type DatasetRepository interface {
 
 // RunRepository manages run state with immutable identity.
 type RunRepository interface {
-	CreateRun(ctx context.Context, run domain.Run) error
-	GetRun(ctx context.Context, projectID, id string) (domain.Run, error)
-	ListRuns(ctx context.Context, filter RunFilter) ([]domain.Run, error)
-	UpdateRunStatus(ctx context.Context, projectID, id string, status string, endedAt *time.Time) error
+	CreateRun(ctx context.Context, projectID, idempotencyKey string, pipelineSpecJSON, runSpecJSON []byte, specHash string) (RunRecord, bool, error)
+	GetRun(ctx context.Context, projectID, id string) (RunRecord, error)
 }
 
 // ArtifactRepository manages project-scoped artifacts.
@@ -86,6 +103,12 @@ type ModelRepository interface {
 	GetModel(ctx context.Context, projectID, id string) (domain.Model, error)
 	ListModels(ctx context.Context, filter ModelFilter) ([]domain.Model, error)
 	UpdateModelStatus(ctx context.Context, projectID, id string, status domain.ModelStatus) error
+}
+
+// PlanRepository stores deterministic execution plans for runs.
+type PlanRepository interface {
+	UpsertPlan(ctx context.Context, projectID, runID string, planJSON []byte) (PlanRecord, error)
+	GetPlan(ctx context.Context, projectID, runID string) (PlanRecord, error)
 }
 
 // AuditEventAppender ensures append-only audit writes.

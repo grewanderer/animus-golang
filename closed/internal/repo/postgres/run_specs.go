@@ -1,0 +1,139 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/google/uuid"
+
+	"github.com/animus-labs/animus-go/closed/internal/repo"
+)
+
+type RunSpecStore struct {
+	db DB
+}
+
+func NewRunSpecStore(db DB) *RunSpecStore {
+	if db == nil {
+		return nil
+	}
+	return &RunSpecStore{db: db}
+}
+
+func (s *RunSpecStore) CreateRun(ctx context.Context, projectID, idempotencyKey string, pipelineSpecJSON, runSpecJSON []byte, specHash string) (repo.RunRecord, bool, error) {
+	if s == nil || s.db == nil {
+		return repo.RunRecord{}, false, fmt.Errorf("run spec store not initialized")
+	}
+	projectID = strings.TrimSpace(projectID)
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	specHash = strings.TrimSpace(specHash)
+	if projectID == "" {
+		return repo.RunRecord{}, false, fmt.Errorf("project id is required")
+	}
+	if idempotencyKey == "" {
+		return repo.RunRecord{}, false, fmt.Errorf("idempotency key is required")
+	}
+	if len(pipelineSpecJSON) == 0 {
+		return repo.RunRecord{}, false, fmt.Errorf("pipeline spec is required")
+	}
+	if len(runSpecJSON) == 0 {
+		return repo.RunRecord{}, false, fmt.Errorf("run spec is required")
+	}
+	if specHash == "" {
+		return repo.RunRecord{}, false, fmt.Errorf("spec hash is required")
+	}
+
+	runID := uuid.NewString()
+	status := "pending"
+
+	var record repo.RunRecord
+	err := s.db.QueryRowContext(
+		ctx,
+		`INSERT INTO runs (
+			run_id,
+			project_id,
+			idempotency_key,
+			status,
+			pipeline_spec,
+			run_spec,
+			spec_hash
+		) VALUES ($1,$2,$3,$4,$5,$6,$7)
+		ON CONFLICT (project_id, idempotency_key) DO NOTHING
+		RETURNING run_id, project_id, idempotency_key, status, pipeline_spec, run_spec, spec_hash, created_at`,
+		runID,
+		projectID,
+		idempotencyKey,
+		status,
+		pipelineSpecJSON,
+		runSpecJSON,
+		specHash,
+	).Scan(&record.ID, &record.ProjectID, &record.IdempotencyKey, &record.Status, &record.PipelineSpec, &record.RunSpec, &record.SpecHash, &record.CreatedAt)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return repo.RunRecord{}, false, fmt.Errorf("insert run: %w", err)
+		}
+		existing, err := s.GetRunByIdempotencyKey(ctx, projectID, idempotencyKey)
+		if err != nil {
+			return repo.RunRecord{}, false, err
+		}
+		return existing, false, nil
+	}
+	return record, true, nil
+}
+
+func (s *RunSpecStore) GetRun(ctx context.Context, projectID, id string) (repo.RunRecord, error) {
+	if s == nil || s.db == nil {
+		return repo.RunRecord{}, fmt.Errorf("run spec store not initialized")
+	}
+	projectID = strings.TrimSpace(projectID)
+	id = strings.TrimSpace(id)
+	if projectID == "" {
+		return repo.RunRecord{}, fmt.Errorf("project id is required")
+	}
+	if id == "" {
+		return repo.RunRecord{}, fmt.Errorf("run id is required")
+	}
+	var record repo.RunRecord
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT run_id, project_id, idempotency_key, status, pipeline_spec, run_spec, spec_hash, created_at
+		 FROM runs
+		 WHERE project_id = $1 AND run_id = $2`,
+		projectID,
+		id,
+	)
+	if err := row.Scan(&record.ID, &record.ProjectID, &record.IdempotencyKey, &record.Status, &record.PipelineSpec, &record.RunSpec, &record.SpecHash, &record.CreatedAt); err != nil {
+		return repo.RunRecord{}, handleNotFound(err)
+	}
+	return record, nil
+}
+
+func (s *RunSpecStore) GetRunByIdempotencyKey(ctx context.Context, projectID, idempotencyKey string) (repo.RunRecord, error) {
+	if s == nil || s.db == nil {
+		return repo.RunRecord{}, fmt.Errorf("run spec store not initialized")
+	}
+	projectID = strings.TrimSpace(projectID)
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if projectID == "" {
+		return repo.RunRecord{}, fmt.Errorf("project id is required")
+	}
+	if idempotencyKey == "" {
+		return repo.RunRecord{}, fmt.Errorf("idempotency key is required")
+	}
+	var record repo.RunRecord
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT run_id, project_id, idempotency_key, status, pipeline_spec, run_spec, spec_hash, created_at
+		 FROM runs
+		 WHERE project_id = $1 AND idempotency_key = $2`,
+		projectID,
+		idempotencyKey,
+	)
+	if err := row.Scan(&record.ID, &record.ProjectID, &record.IdempotencyKey, &record.Status, &record.PipelineSpec, &record.RunSpec, &record.SpecHash, &record.CreatedAt); err != nil {
+		return repo.RunRecord{}, handleNotFound(err)
+	}
+	return record, nil
+}
