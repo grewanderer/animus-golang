@@ -207,11 +207,13 @@ $defs:
       cpu:
         type: string
         minLength: 1
-        description: CPU request, explicit and unit-bearing (ex: "500m", "2").
+        description: >-
+          CPU request, explicit and unit-bearing (ex: "500m", "2").
       memory:
         type: string
         minLength: 1
-        description: Memory request, explicit and unit-bearing (ex: "4Gi").
+        description: >-
+          Memory request, explicit and unit-bearing (ex: "4Gi").
       gpu:
         type: integer
         minimum: 0
