@@ -158,6 +158,7 @@ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 ## Documentation
 
 - [`docs/Итоговое техническое задание.md`](docs/Итоговое техническое задание.md)
+- Execution and API schemas are located under the top-level `api/` directory.
 
 ### Artifact endpoints (dataset registry)
 
