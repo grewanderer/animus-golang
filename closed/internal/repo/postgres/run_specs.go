@@ -16,6 +16,28 @@ type RunSpecStore struct {
 	db DB
 }
 
+const (
+	insertRunSpecQuery = `INSERT INTO runs (
+		run_id,
+		project_id,
+		idempotency_key,
+		status,
+		pipeline_spec,
+		run_spec,
+		spec_hash
+	) VALUES ($1,$2,$3,$4,$5,$6,$7)
+	ON CONFLICT (project_id, idempotency_key) DO NOTHING
+	RETURNING run_id, project_id, idempotency_key, status, pipeline_spec, run_spec, spec_hash, created_at`
+
+	selectRunByIDQuery = `SELECT run_id, project_id, idempotency_key, status, pipeline_spec, run_spec, spec_hash, created_at
+	 FROM runs
+	 WHERE project_id = $1 AND run_id = $2`
+
+	selectRunByIdempotencyQuery = `SELECT run_id, project_id, idempotency_key, status, pipeline_spec, run_spec, spec_hash, created_at
+	 FROM runs
+	 WHERE project_id = $1 AND idempotency_key = $2`
+)
+
 func NewRunSpecStore(db DB) *RunSpecStore {
 	if db == nil {
 		return nil
@@ -52,17 +74,7 @@ func (s *RunSpecStore) CreateRun(ctx context.Context, projectID, idempotencyKey 
 	var record repo.RunRecord
 	err := s.db.QueryRowContext(
 		ctx,
-		`INSERT INTO runs (
-			run_id,
-			project_id,
-			idempotency_key,
-			status,
-			pipeline_spec,
-			run_spec,
-			spec_hash
-		) VALUES ($1,$2,$3,$4,$5,$6,$7)
-		ON CONFLICT (project_id, idempotency_key) DO NOTHING
-		RETURNING run_id, project_id, idempotency_key, status, pipeline_spec, run_spec, spec_hash, created_at`,
+		insertRunSpecQuery,
 		runID,
 		projectID,
 		idempotencyKey,
@@ -99,9 +111,7 @@ func (s *RunSpecStore) GetRun(ctx context.Context, projectID, id string) (repo.R
 	var record repo.RunRecord
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT run_id, project_id, idempotency_key, status, pipeline_spec, run_spec, spec_hash, created_at
-		 FROM runs
-		 WHERE project_id = $1 AND run_id = $2`,
+		selectRunByIDQuery,
 		projectID,
 		id,
 	)
@@ -126,9 +136,7 @@ func (s *RunSpecStore) GetRunByIdempotencyKey(ctx context.Context, projectID, id
 	var record repo.RunRecord
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT run_id, project_id, idempotency_key, status, pipeline_spec, run_spec, spec_hash, created_at
-		 FROM runs
-		 WHERE project_id = $1 AND idempotency_key = $2`,
+		selectRunByIdempotencyQuery,
 		projectID,
 		idempotencyKey,
 	)
