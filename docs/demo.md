@@ -38,6 +38,35 @@ Expected output includes:
 - Docker and docker compose (or docker-compose) for the full demo
 - curl (preferred) or python3
 
+## Golden demo transcript
+The golden transcript captures a successful full demo run with sanitized, deterministic output.
+
+Regenerate:
+
+```bash
+DEMO_GOLDEN=1 make demo
+```
+
+Excerpt:
+
+```
+==> starting demo stack
+==> waiting for gateway <gateway_url>/healthz
+==> waiting for userspace <userspace_url>/healthz
+=== Create project ===
+==> create project
+project_id=<project_id>
+=== Create run ===
+==> create run
+run_id=<run_id>
+spec_hash=<spec_hash>
+=== Userspace execution ===
+==> userspace execution (data plane surface)
+userspace_status=<userspace_status>
+```
+
+Full transcript: `open/demo/golden/demo-transcript.txt`
+
 ## What is real today
 - Control plane services and APIs (closed/).
 - Deterministic planning and dry-run simulation.

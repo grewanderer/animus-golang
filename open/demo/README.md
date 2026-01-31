@@ -20,6 +20,29 @@ No-docker smoke check (requires running services):
 ```bash
 DEMO_NO_DOCKER=1 DEMO_BASE_URL=http://localhost:8080 make demo-smoke
 ```
+
+Golden demo transcript:
+
+```bash
+DEMO_GOLDEN=1 make demo
+```
+
+Excerpt:
+
+```
+==> starting demo stack
+==> waiting for gateway <gateway_url>/healthz
+==> waiting for userspace <userspace_url>/healthz
+=== Create run ===
+==> create run
+run_id=<run_id>
+spec_hash=<spec_hash>
+=== Audit export ===
+==> audit export (first 3 lines)
+```
+
+Full transcript: `open/demo/golden/demo-transcript.txt`
+
 Components:
 - `docker-compose.yml`: control plane + userspace demo stack.
 - `data/`: deterministic demo dataset.

@@ -12,6 +12,9 @@ HEALTH_POLL_SECONDS="${HEALTH_POLL_SECONDS:-1}"
 LOG_TAIL_LINES="${LOG_TAIL_LINES:-200}"
 DEMO_MODE="full"
 SKIP_CLEANUP=0
+GOLDEN_MODE=0
+TRANSCRIPT_FILE=""
+TRANSCRIPT_TMP=""
 
 export ANIMUS_GATEWAY_URL="${ANIMUS_GATEWAY_URL:-http://localhost:${GATEWAY_PORT}}"
 export ANIMUS_USERSPACE_URL="${ANIMUS_USERSPACE_URL:-http://localhost:${USERSPACE_PORT}}"
@@ -49,6 +52,53 @@ require_docker() {
     echo "docker is required for the full demo" >&2
     exit 1
   fi
+}
+
+enable_golden_mode() {
+  if [ "${DEMO_GOLDEN:-0}" != "1" ]; then
+    return
+  fi
+  GOLDEN_MODE=1
+  local transcript_dir="${ROOT_DIR}/open/demo/golden"
+  TRANSCRIPT_FILE="${transcript_dir}/demo-transcript.txt"
+  TRANSCRIPT_TMP="${TRANSCRIPT_FILE}.tmp"
+  mkdir -p "${transcript_dir}"
+  : > "${TRANSCRIPT_TMP}"
+  exec > >(tee "${TRANSCRIPT_TMP}")
+}
+
+finalize_golden() {
+  if [ "${GOLDEN_MODE}" = "1" ] && [ -n "${TRANSCRIPT_TMP}" ]; then
+    mv -f "${TRANSCRIPT_TMP}" "${TRANSCRIPT_FILE}"
+  fi
+}
+
+banner() {
+  if [ "${GOLDEN_MODE}" = "1" ]; then
+    echo "=== $1 ==="
+  fi
+}
+
+print_placeholder() {
+  if [ "${GOLDEN_MODE}" = "1" ]; then
+    echo "$1=<${1}>"
+  fi
+}
+
+display_gateway_url() {
+  if [ "${GOLDEN_MODE}" = "1" ]; then
+    echo "<gateway_url>"
+    return
+  fi
+  echo "${ANIMUS_GATEWAY_URL}"
+}
+
+display_userspace_url() {
+  if [ "${GOLDEN_MODE}" = "1" ]; then
+    echo "<userspace_url>"
+    return
+  fi
+  echo "${ANIMUS_USERSPACE_URL}"
 }
 
 detect_compose_cmd() {
@@ -379,6 +429,8 @@ elif [ -n "${1:-}" ]; then
   exit 2
 fi
 
+enable_golden_mode
+
 if [ "${DEMO_MODE}" = "down" ]; then
   SKIP_CLEANUP=1
   if detect_compose_cmd; then
@@ -393,6 +445,7 @@ if [ "${DEMO_MODE}" = "down" ]; then
   exit 0
 fi
 
+enable_golden_mode
 require_http_tooling
 
 if [ "${DEMO_NO_DOCKER:-0}" = "1" ]; then
@@ -422,6 +475,7 @@ if [ "${DEMO_NO_DOCKER:-0}" = "1" ]; then
     exit 1
   fi
   echo "==> smoke check ok"
+  finalize_golden
   exit 0
 fi
 
@@ -439,12 +493,13 @@ fi
 echo "==> starting demo stack"
 compose up -d --build
 
-echo "==> waiting for gateway ${ANIMUS_GATEWAY_URL}/healthz"
+echo "==> waiting for gateway $(display_gateway_url)/healthz"
 if ! wait_for_health "${ANIMUS_GATEWAY_URL}/healthz" "${HEALTH_TIMEOUT_SECONDS}" "${HEALTH_POLL_SECONDS}"; then
   echo "gateway did not become healthy within ${HEALTH_TIMEOUT_SECONDS}s" >&2
   exit 1
 fi
 
+echo "==> waiting for userspace $(display_userspace_url)/healthz"
 if ! wait_for_health "${ANIMUS_USERSPACE_URL}/healthz" "${HEALTH_TIMEOUT_SECONDS}" "${HEALTH_POLL_SECONDS}"; then
   echo "userspace runner did not become healthy within ${HEALTH_TIMEOUT_SECONDS}s" >&2
   exit 1
@@ -460,6 +515,7 @@ NAME_SUFFIX="${ANIMUS_DEMO_SUFFIX:-$(date -u +%Y%m%d%H%M%S)}"
 API_BASE="${ANIMUS_GATEWAY_URL}/api"
 
 if [ "${DEMO_MODE}" = "smoke" ]; then
+  banner "Create project"
   echo "==> create project"
   project_body=$(http_request "POST" "${API_BASE}/dataset-registry/projects" \
     "{\"name\":\"demo-project-${NAME_SUFFIX}\",\"description\":\"Animus smoke demo\",\"metadata\":{\"source\":\"demo\"}}" \
@@ -469,7 +525,9 @@ if [ "${DEMO_MODE}" = "smoke" ]; then
     echo "project_id missing" >&2
     exit 1
   fi
+  print_placeholder "project_id"
   echo "==> smoke check ok"
+  finalize_golden
   exit 0
 fi
 
@@ -484,6 +542,7 @@ echo "  7) POST /api/experiments/projects/{project_id}/runs/{run_id}:dry-run"
 echo "  8) GET  /api/experiments/projects/{project_id}/runs/{run_id}"
 echo "  9) POST /api/audit/export"
 
+banner "Auth session"
 echo "==> auth session"
 if [ "$(http_get_status "${ANIMUS_GATEWAY_URL}/auth/session")" = "200" ]; then
   http_request "GET" "${ANIMUS_GATEWAY_URL}/auth/session" "" "" "X-Request-Id: ${REQUEST_ID}" >/dev/null
@@ -491,6 +550,7 @@ else
   echo "==> auth session not configured (dev stub in use)"
 fi
 
+banner "Create project"
 echo "==> create project"
 project_body=$(http_request "POST" "${API_BASE}/dataset-registry/projects" \
   "{\"name\":\"demo-project-${NAME_SUFFIX}\",\"description\":\"Animus full-surface demo\",\"metadata\":{\"source\":\"demo\"}}" \
@@ -500,9 +560,11 @@ if [ -z "${PROJECT_ID}" ]; then
   echo "project_id missing" >&2
   exit 1
 fi
+print_placeholder "project_id"
 
 PROJECT_HEADER="X-Project-Id: ${PROJECT_ID}"
 
+banner "Create dataset"
 echo "==> create dataset"
 dataset_body=$(http_request "POST" "${API_BASE}/dataset-registry/datasets" \
   "{\"name\":\"demo-dataset-${NAME_SUFFIX}\",\"description\":\"Deterministic demo dataset\",\"metadata\":{\"source\":\"demo\"}}" \
@@ -513,7 +575,9 @@ if [ -z "${DATASET_ID}" ]; then
   echo "dataset_id missing" >&2
   exit 1
 fi
+print_placeholder "dataset_id"
 
+banner "Upload dataset version"
 echo "==> upload dataset version"
 DATASET_FILE="${ROOT_DIR}/open/demo/data/demo.csv"
 version_body=$(http_post_multipart "${API_BASE}/dataset-registry/datasets/${DATASET_ID}/versions/upload" \
@@ -524,7 +588,9 @@ if [ -z "${DATASET_VERSION_ID}" ]; then
   echo "dataset_version_id missing" >&2
   exit 1
 fi
+print_placeholder "dataset_version_id"
 
+banner "Create artifact"
 echo "==> create artifact (presigned upload)"
 ARTIFACT_FILE="$(mktemp -t animus-demo-artifact.XXXXXX.txt)"
 printf "animus demo artifact %s\n" "${REQUEST_ID}" > "${ARTIFACT_FILE}"
@@ -539,6 +605,7 @@ if [ -z "${UPLOAD_URL}" ]; then
   exit 1
 fi
 http_put_file "${UPLOAD_URL}" "${ARTIFACT_FILE}" "text/plain"
+print_placeholder "artifact_id"
 
 PIPELINE_SPEC=$(cat <<'JSON'
 {"apiVersion":"animus/v1alpha1","kind":"Pipeline","specVersion":"1.0","spec":{"steps":[{"name":"prepare","image":"ghcr.io/animus/demo@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","command":["/bin/true"],"args":[],"inputs":{"datasets":[],"artifacts":[]},"outputs":{"artifacts":[{"name":"prepared","type":"dataset"}]},"env":[],"resources":{"cpu":"1","memory":"512Mi","gpu":0},"retryPolicy":{"maxAttempts":1,"backoff":{"type":"fixed","initialSeconds":0,"maxSeconds":0,"multiplier":1}}},{"name":"train","image":"ghcr.io/animus/demo@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","command":["/bin/true"],"args":[],"inputs":{"datasets":[{"name":"training","datasetRef":"training_data"}],"artifacts":[{"name":"prepared","fromStep":"prepare","artifact":"prepared"}]},"outputs":{"artifacts":[{"name":"model","type":"model"}]},"env":[{"name":"SEED","value":"1337"}],"resources":{"cpu":"2","memory":"1Gi","gpu":0},"retryPolicy":{"maxAttempts":2,"backoff":{"type":"fixed","initialSeconds":1,"maxSeconds":1,"multiplier":1}}}],"dependencies":[{"from":"prepare","to":"train"}]}}
@@ -550,6 +617,7 @@ RUN_REQUEST=$(cat <<JSON
 JSON
 )
 
+banner "Create run"
 echo "==> create run"
 run_body=$(http_request "POST" "${API_BASE}/experiments/projects/${PROJECT_ID}/runs" "${RUN_REQUEST}" "application/json" "X-Request-Id: ${REQUEST_ID}" "${PROJECT_HEADER}")
 RUN_ID="$(json_get "${run_body}" "runId")"
@@ -559,30 +627,56 @@ if [ -z "${RUN_ID}" ] || [ -z "${SPEC_HASH}" ]; then
   echo "runId/specHash missing" >&2
   exit 1
 fi
+print_placeholder "run_id"
+print_placeholder "spec_hash"
 
+banner "Plan"
 echo "==> plan run"
 http_request "POST" "${API_BASE}/experiments/projects/${PROJECT_ID}/runs/${RUN_ID}:plan" "{}" "application/json" "X-Request-Id: ${REQUEST_ID}" "${PROJECT_HEADER}" >/dev/null
 
+banner "Dry-run"
 echo "==> dry-run"
 dry_body=$(http_request "POST" "${API_BASE}/experiments/projects/${PROJECT_ID}/runs/${RUN_ID}:dry-run" "{}" "application/json" "X-Request-Id: ${REQUEST_ID}" "${PROJECT_HEADER}")
 DRY_STATE="$(json_get "${dry_body}" "state")"
+if [ "${GOLDEN_MODE}" = "1" ]; then
+  echo "dry_run_state=<dry_run_state>"
+fi
 
+banner "Derived state"
 echo "==> derived state"
 get_body=$(http_request "GET" "${API_BASE}/experiments/projects/${PROJECT_ID}/runs/${RUN_ID}" "" "" "X-Request-Id: ${REQUEST_ID}" "${PROJECT_HEADER}")
 DERIVED_STATE="$(json_get "${get_body}" "state")"
 
-printf "==> run state: %s (dry-run=%s)\n" "${DERIVED_STATE}" "${DRY_STATE}"
+if [ "${GOLDEN_MODE}" = "1" ]; then
+  echo "derived_state=<derived_state>"
+else
+  printf "==> run state: %s (dry-run=%s)\n" "${DERIVED_STATE}" "${DRY_STATE}"
+fi
 
+banner "Userspace execution"
 echo "==> userspace execution (data plane surface)"
 userspace_body=$(http_request "POST" "${ANIMUS_USERSPACE_URL}/execute-demo-step" \
   "{\"run_id\":\"${RUN_ID}\",\"step_name\":\"train\",\"attempt\":1,\"seed\":\"${SPEC_HASH}:${RUN_ID}\",\"artifact_bucket\":\"${ANIMUS_MINIO_BUCKET_ARTIFACTS}\",\"artifact_prefix\":\"demo/${RUN_ID}\"}" \
   "application/json" "X-Request-Id: ${REQUEST_ID}")
 USERSPACE_STATUS="$(json_get "${userspace_body}" "status")"
 
-printf "==> userspace status: %s\n" "${USERSPACE_STATUS}"
+if [ "${GOLDEN_MODE}" = "1" ]; then
+  echo "userspace_status=<userspace_status>"
+else
+  printf "==> userspace status: %s\n" "${USERSPACE_STATUS}"
+fi
 
+banner "Audit export"
 echo "==> audit export (first 3 lines)"
 audit_body=$(http_request "POST" "${API_BASE}/audit/export" "{\"project_id\":\"${PROJECT_ID}\"}" "application/json" "X-Request-Id: ${REQUEST_ID}" "${PROJECT_HEADER}")
-printf "%s\n" "${audit_body}" | head -n 3
+if [ "${GOLDEN_MODE}" = "1" ]; then
+  echo '{"event_id":<event_id>,"action":"<action>","resource_type":"<resource_type>","resource_id":"<resource_id>"}'
+  echo '{"event_id":<event_id>,"action":"<action>","resource_type":"<resource_type>","resource_id":"<resource_id>"}'
+  echo '{"event_id":<event_id>,"action":"<action>","resource_type":"<resource_type>","resource_id":"<resource_id>"}'
+else
+  printf "%s\n" "${audit_body}" | head -n 3
+fi
 
 echo "==> demo complete"
+finalize_golden
+exit 0
