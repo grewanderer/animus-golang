@@ -1,24 +1,24 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/animus-labs/animus-go/closed/internal/domain"
 	"github.com/animus-labs/animus-go/closed/internal/execution/plan"
 	"github.com/animus-labs/animus-go/closed/internal/platform/auditlog"
 	"github.com/animus-labs/animus-go/closed/internal/platform/auth"
 	"github.com/animus-labs/animus-go/closed/internal/repo"
 	"github.com/animus-labs/animus-go/closed/internal/repo/postgres"
+	"github.com/animus-labs/animus-go/closed/internal/service/runs"
 )
 
 type planSummaryResponse struct {
 	RunID     string   `json:"runId"`
 	StepCount int      `json:"stepCount"`
 	StepNames []string `json:"stepNames"`
+	State     string   `json:"state"`
 }
 
 func (api *experimentsAPI) handlePlanRun(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +66,7 @@ func (api *experimentsAPI) handlePlanRun(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	planJSON, err := marshalExecutionPlan(execPlan)
+	planJSON, err := plan.MarshalExecutionPlan(execPlan)
 	if err != nil {
 		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 		return
@@ -116,6 +116,19 @@ func (api *experimentsAPI) handlePlanRun(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	planStore = postgres.NewPlanStore(api.db)
+	stepStore := postgres.NewStepExecutionStore(api.db)
+	stateSvc := runs.New(runStore, planStore, stepStore)
+	if stateSvc == nil {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	_, _, derived, err := stateSvc.DeriveAndPersist(r.Context(), projectID, runID)
+	if err != nil {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+
 	stepNames := make([]string, 0, len(execPlan.Steps))
 	for _, step := range execPlan.Steps {
 		stepNames = append(stepNames, step.Name)
@@ -124,6 +137,7 @@ func (api *experimentsAPI) handlePlanRun(w http.ResponseWriter, r *http.Request)
 		RunID:     runID,
 		StepCount: len(execPlan.Steps),
 		StepNames: stepNames,
+		State:     string(derived),
 	})
 }
 
@@ -157,69 +171,4 @@ func (api *experimentsAPI) handleGetRunPlan(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(record.Plan)
-}
-
-func marshalExecutionPlan(plan domain.ExecutionPlan) ([]byte, error) {
-	payload := executionPlanPayload{
-		RunID:     plan.RunID,
-		ProjectID: plan.ProjectID,
-		Steps:     make([]executionPlanStepPayload, 0, len(plan.Steps)),
-		Edges:     make([]executionPlanEdgePayload, 0, len(plan.Edges)),
-	}
-	for _, step := range plan.Steps {
-		payload.Steps = append(payload.Steps, executionPlanStepPayload{
-			Name:         step.Name,
-			RetryPolicy:  retryPolicyPayloadFromDomain(step.RetryPolicy),
-			AttemptStart: step.AttemptStart,
-		})
-	}
-	for _, edge := range plan.Edges {
-		payload.Edges = append(payload.Edges, executionPlanEdgePayload{
-			From: edge.From,
-			To:   edge.To,
-		})
-	}
-	return json.Marshal(payload)
-}
-
-type executionPlanPayload struct {
-	RunID     string                     `json:"runId"`
-	ProjectID string                     `json:"projectId"`
-	Steps     []executionPlanStepPayload `json:"steps"`
-	Edges     []executionPlanEdgePayload `json:"edges"`
-}
-
-type executionPlanStepPayload struct {
-	Name         string             `json:"name"`
-	RetryPolicy  retryPolicyPayload `json:"retryPolicy"`
-	AttemptStart int                `json:"attemptStart"`
-}
-
-type executionPlanEdgePayload struct {
-	From string `json:"from"`
-	To   string `json:"to"`
-}
-
-type retryPolicyPayload struct {
-	MaxAttempts int            `json:"maxAttempts"`
-	Backoff     backoffPayload `json:"backoff"`
-}
-
-type backoffPayload struct {
-	Type           string  `json:"type"`
-	InitialSeconds int     `json:"initialSeconds"`
-	MaxSeconds     int     `json:"maxSeconds"`
-	Multiplier     float64 `json:"multiplier"`
-}
-
-func retryPolicyPayloadFromDomain(policy domain.PipelineRetryPolicy) retryPolicyPayload {
-	return retryPolicyPayload{
-		MaxAttempts: policy.MaxAttempts,
-		Backoff: backoffPayload{
-			Type:           policy.Backoff.Type,
-			InitialSeconds: policy.Backoff.InitialSeconds,
-			MaxSeconds:     policy.Backoff.MaxSeconds,
-			Multiplier:     policy.Backoff.Multiplier,
-		},
-	}
 }

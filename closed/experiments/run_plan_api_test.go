@@ -1,14 +1,15 @@
 package main
 
 import (
-	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/animus-labs/animus-go/closed/internal/domain"
+	"github.com/animus-labs/animus-go/closed/internal/execution/plan"
 )
 
 func TestMarshalExecutionPlan(t *testing.T) {
-	plan := domain.ExecutionPlan{
+	execPlan := domain.ExecutionPlan{
 		RunID:     "run-1",
 		ProjectID: "proj-1",
 		Steps: []domain.ExecutionPlanStep{
@@ -44,26 +45,23 @@ func TestMarshalExecutionPlan(t *testing.T) {
 		},
 	}
 
-	raw, err := marshalExecutionPlan(plan)
+	raw, err := plan.MarshalExecutionPlan(execPlan)
 	if err != nil {
 		t.Fatalf("marshal plan: %v", err)
 	}
 
-	var decoded executionPlanPayload
-	if err := json.Unmarshal(raw, &decoded); err != nil {
+	decoded, err := plan.UnmarshalExecutionPlan(raw)
+	if err != nil {
 		t.Fatalf("unmarshal plan: %v", err)
 	}
 
-	if decoded.RunID != plan.RunID || decoded.ProjectID != plan.ProjectID {
+	if decoded.RunID != execPlan.RunID || decoded.ProjectID != execPlan.ProjectID {
 		t.Fatalf("unexpected ids: %+v", decoded)
 	}
-	if len(decoded.Steps) != 2 || decoded.Steps[0].Name != "step-b" || decoded.Steps[1].Name != "step-a" {
-		t.Fatalf("unexpected step order: %+v", decoded.Steps)
+	if !reflect.DeepEqual(decoded.Steps, execPlan.Steps) {
+		t.Fatalf("unexpected steps: %+v", decoded.Steps)
 	}
-	if decoded.Steps[0].AttemptStart != 1 {
-		t.Fatalf("unexpected attempt start: %d", decoded.Steps[0].AttemptStart)
-	}
-	if len(decoded.Edges) != 1 || decoded.Edges[0].From != "step-b" || decoded.Edges[0].To != "step-a" {
+	if !reflect.DeepEqual(decoded.Edges, execPlan.Edges) {
 		t.Fatalf("unexpected edges: %+v", decoded.Edges)
 	}
 }

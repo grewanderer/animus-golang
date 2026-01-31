@@ -5,10 +5,11 @@ import (
 	"testing"
 
 	"github.com/animus-labs/animus-go/closed/internal/domain"
+	"github.com/animus-labs/animus-go/closed/internal/execution/plan"
 )
 
-func TestDecodeExecutionPlan(t *testing.T) {
-	plan := domain.ExecutionPlan{
+func TestExecutionPlanCodec(t *testing.T) {
+	execPlan := domain.ExecutionPlan{
 		RunID:     "run-1",
 		ProjectID: "proj-1",
 		Steps: []domain.ExecutionPlanStep{
@@ -31,22 +32,22 @@ func TestDecodeExecutionPlan(t *testing.T) {
 		},
 	}
 
-	raw, err := marshalExecutionPlan(plan)
+	raw, err := plan.MarshalExecutionPlan(execPlan)
 	if err != nil {
 		t.Fatalf("marshal plan: %v", err)
 	}
-	decoded, err := decodeExecutionPlan(raw)
+	decoded, err := plan.UnmarshalExecutionPlan(raw)
 	if err != nil {
 		t.Fatalf("decode plan: %v", err)
 	}
 
-	if decoded.RunID != plan.RunID || decoded.ProjectID != plan.ProjectID {
+	if decoded.RunID != execPlan.RunID || decoded.ProjectID != execPlan.ProjectID {
 		t.Fatalf("unexpected ids: %+v", decoded)
 	}
-	if !reflect.DeepEqual(decoded.Steps, plan.Steps) {
-		t.Fatalf("steps mismatch: %+v vs %+v", decoded.Steps, plan.Steps)
+	if !reflect.DeepEqual(decoded.Steps, execPlan.Steps) {
+		t.Fatalf("steps mismatch: %+v vs %+v", decoded.Steps, execPlan.Steps)
 	}
-	if !reflect.DeepEqual(decoded.Edges, plan.Edges) {
-		t.Fatalf("edges mismatch: %+v vs %+v", decoded.Edges, plan.Edges)
+	if !reflect.DeepEqual(decoded.Edges, execPlan.Edges) {
+		t.Fatalf("edges mismatch: %+v vs %+v", decoded.Edges, execPlan.Edges)
 	}
 }

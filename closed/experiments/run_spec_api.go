@@ -18,6 +18,7 @@ import (
 	"github.com/animus-labs/animus-go/closed/internal/platform/auth"
 	"github.com/animus-labs/animus-go/closed/internal/repo"
 	"github.com/animus-labs/animus-go/closed/internal/repo/postgres"
+	"github.com/animus-labs/animus-go/closed/internal/service/runs"
 )
 
 const runSpecVersion = "1.0"
@@ -212,12 +213,20 @@ func (api *experimentsAPI) handleGetRun(w http.ResponseWriter, r *http.Request) 
 	}
 
 	runStore := postgres.NewRunSpecStore(api.db)
-	if runStore == nil {
+	planStore := postgres.NewPlanStore(api.db)
+	stepStore := postgres.NewStepExecutionStore(api.db)
+	if runStore == nil || planStore == nil || stepStore == nil {
 		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 		return
 	}
 
-	record, err := runStore.GetRun(r.Context(), projectID, runID)
+	stateSvc := runs.New(runStore, planStore, stepStore)
+	if stateSvc == nil {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+
+	record, _, derived, err := stateSvc.DeriveAndPersist(r.Context(), projectID, runID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			api.writeError(w, r, http.StatusNotFound, "not_found")
@@ -229,7 +238,7 @@ func (api *experimentsAPI) handleGetRun(w http.ResponseWriter, r *http.Request) 
 
 	api.writeJSON(w, http.StatusOK, getRunResponse{
 		RunID:     record.ID,
-		Status:    record.Status,
+		Status:    string(derived),
 		SpecHash:  record.SpecHash,
 		CreatedAt: record.CreatedAt,
 		RunSpec:   json.RawMessage(record.RunSpec),
