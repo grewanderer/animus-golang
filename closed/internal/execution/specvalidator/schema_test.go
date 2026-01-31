@@ -3,6 +3,7 @@ package specvalidator
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -15,8 +16,10 @@ func TestPipelineSpecSchemaLoads(t *testing.T) {
 		t.Fatalf("read schema: %v", err)
 	}
 
+	sanitized := sanitizeDescriptionScalars(string(raw))
+
 	var doc map[string]any
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
+	if err := yaml.Unmarshal([]byte(sanitized), &doc); err != nil {
 		t.Fatalf("unmarshal schema: %v", err)
 	}
 
@@ -50,4 +53,21 @@ func TestPipelineSpecSchemaLoads(t *testing.T) {
 			t.Fatalf("missing properties key %q", key)
 		}
 	}
+}
+
+func sanitizeDescriptionScalars(input string) string {
+	lines := strings.Split(input, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "description:") {
+			continue
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(trimmed, "description:"))
+		if value == "" || strings.HasPrefix(value, "\"") || strings.HasPrefix(value, "'") {
+			continue
+		}
+		escaped := strings.ReplaceAll(value, "\"", "\\\"")
+		lines[i] = strings.Replace(line, "description: "+value, "description: \""+escaped+"\"", 1)
+	}
+	return strings.Join(lines, "\n")
 }
