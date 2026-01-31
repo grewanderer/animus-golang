@@ -1,11 +1,11 @@
-# PipelineSpec (Execution Contract)
+# PipelineSpec (execution contract)
 
-This document defines the PipelineSpec used by Animus for deterministic, replayable execution planning.
+Control, not a demo. This document defines the PipelineSpec used by Animus for deterministic, replayable execution planning.
 The spec is a reusable, declarative template and is intentionally strict to prevent hidden defaults.
 
 Schema: `api/pipeline_spec.yaml`
 
-## Separation of Responsibilities
+## Separation of responsibilities
 
 PipelineSpec:
 - Declarative execution template.
@@ -18,7 +18,7 @@ RunSpec:
 - Snapshots environment (image digests and env hash).
 - Is the unit of determinism and replay.
 
-## Determinism Rules
+## Determinism rules
 
 - Image references must be pinned by digest (no tags).
 - All fields are explicit; empty lists are allowed but must be present.
@@ -27,7 +27,7 @@ RunSpec:
 - Retry policy and resource requests are required per step.
 - Determinism is achieved via RunSpec bindings, not PipelineSpec defaults.
 
-## Top-level Fields
+## Top-level fields
 
 - `apiVersion` (string, required)
 - `kind` (string, required, must be `Pipeline`)
@@ -40,7 +40,7 @@ RunSpec:
   - `steps` (array, required)
   - `dependencies` (array, required)
 
-## Step Definition
+## Step definition
 
 Each step is a fully declared execution unit:
 
