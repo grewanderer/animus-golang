@@ -13,13 +13,22 @@ const (
 	RunStateDryRunFailed    RunState = "dryrun_failed"
 )
 
-// StepState represents a terminal step outcome.
-type StepState string
+// StepOutcome represents a terminal step outcome.
+type StepOutcome string
 
 const (
-	StepStateSucceeded StepState = "succeeded"
-	StepStateFailed    StepState = "failed"
-	StepStateSkipped   StepState = "skipped"
+	StepOutcomeSucceeded StepOutcome = "succeeded"
+	StepOutcomeFailed    StepOutcome = "failed"
+	StepOutcomeSkipped   StepOutcome = "skipped"
+)
+
+// StepState is kept for backward compatibility with earlier call sites.
+type StepState = StepOutcome
+
+const (
+	StepStateSucceeded StepState = StepOutcomeSucceeded
+	StepStateFailed    StepState = StepOutcomeFailed
+	StepStateSkipped   StepState = StepOutcomeSkipped
 )
 
 // NormalizeRunState maps free-form status values to canonical run states.
