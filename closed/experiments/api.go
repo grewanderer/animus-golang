@@ -82,6 +82,8 @@ func (api *experimentsAPI) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /projects/{project_id}/runs/{run_id}", api.handleGetRun)
 	mux.HandleFunc("POST /projects/{project_id}/runs/{run_id}:plan", api.handlePlanRun)
 	mux.HandleFunc("GET /projects/{project_id}/runs/{run_id}:plan", api.handleGetRunPlan)
+	mux.HandleFunc("POST /projects/{project_id}/runs/{run_id}:dry-run", api.handleDryRun)
+	mux.HandleFunc("GET /projects/{project_id}/runs/{run_id}:dry-run", api.handleGetDryRun)
 
 	mux.HandleFunc("GET /experiments/{experiment_id}/runs", api.handleListExperimentRuns)
 	mux.HandleFunc("POST /experiments/{experiment_id}/runs", api.handleCreateExperimentRun)
