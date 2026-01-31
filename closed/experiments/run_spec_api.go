@@ -87,7 +87,7 @@ func (api *experimentsAPI) handleCreateRun(w http.ResponseWriter, r *http.Reques
 		api.writeError(w, r, http.StatusBadRequest, "idempotency_key_required")
 		return
 	}
-	pipelineSpec, runSpec, err := buildRunSpec(projectID, identity.Subject, req)
+	_, runSpec, err := buildRunSpec(projectID, identity.Subject, req)
 	if err != nil {
 		switch err {
 		case errPipelineSpecRequired:
