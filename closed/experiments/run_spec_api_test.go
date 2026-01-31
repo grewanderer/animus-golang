@@ -5,7 +5,10 @@ import (
 	"testing"
 )
 
-const validDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+const (
+	validDigest   = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	validImageRef = "ghcr.io/acme/train@" + validDigest
+)
 
 func TestBuildRunSpecValidationErrors(t *testing.T) {
 	tests := []struct {
@@ -16,7 +19,7 @@ func TestBuildRunSpecValidationErrors(t *testing.T) {
 		{
 			name: "missing commit sha",
 			req: createRunRequest{
-				PipelineSpec:    rawSpec(minimalPipelineSpecJSON(validDigest)),
+				PipelineSpec:    rawSpec(minimalPipelineSpecJSON(validImageRef)),
 				DatasetBindings: map[string]string{},
 				CodeRef:         runSpecCodeRef{RepoURL: "https://github.com/acme/repo", CommitSHA: ""},
 				EnvLock:         runSpecEnvLock{EnvHash: "envhash"},
@@ -26,7 +29,7 @@ func TestBuildRunSpecValidationErrors(t *testing.T) {
 		{
 			name: "missing dataset binding",
 			req: createRunRequest{
-				PipelineSpec:    rawSpec(pipelineSpecWithDatasetRef(validDigest, "training")),
+				PipelineSpec:    rawSpec(pipelineSpecWithDatasetRef(validImageRef, "training")),
 				DatasetBindings: map[string]string{},
 				CodeRef:         runSpecCodeRef{RepoURL: "https://github.com/acme/repo", CommitSHA: "deadbeef"},
 				EnvLock:         runSpecEnvLock{EnvHash: "envhash"},
@@ -46,7 +49,7 @@ func TestBuildRunSpecValidationErrors(t *testing.T) {
 		{
 			name: "duplicate step names",
 			req: createRunRequest{
-				PipelineSpec:    rawSpec(pipelineSpecWithDuplicateSteps(validDigest)),
+				PipelineSpec:    rawSpec(pipelineSpecWithDuplicateSteps(validImageRef)),
 				DatasetBindings: map[string]string{},
 				CodeRef:         runSpecCodeRef{RepoURL: "https://github.com/acme/repo", CommitSHA: "deadbeef"},
 				EnvLock:         runSpecEnvLock{EnvHash: "envhash"},
@@ -56,7 +59,7 @@ func TestBuildRunSpecValidationErrors(t *testing.T) {
 		{
 			name: "cycle detected",
 			req: createRunRequest{
-				PipelineSpec:    rawSpec(pipelineSpecWithCycle(validDigest)),
+				PipelineSpec:    rawSpec(pipelineSpecWithCycle(validImageRef)),
 				DatasetBindings: map[string]string{},
 				CodeRef:         runSpecCodeRef{RepoURL: "https://github.com/acme/repo", CommitSHA: "deadbeef"},
 				EnvLock:         runSpecEnvLock{EnvHash: "envhash"},
@@ -66,7 +69,7 @@ func TestBuildRunSpecValidationErrors(t *testing.T) {
 		{
 			name: "missing dataset bindings object",
 			req: createRunRequest{
-				PipelineSpec: rawSpec(minimalPipelineSpecJSON(validDigest)),
+				PipelineSpec: rawSpec(minimalPipelineSpecJSON(validImageRef)),
 				CodeRef:      runSpecCodeRef{RepoURL: "https://github.com/acme/repo", CommitSHA: "deadbeef"},
 				EnvLock:      runSpecEnvLock{EnvHash: "envhash"},
 			},
