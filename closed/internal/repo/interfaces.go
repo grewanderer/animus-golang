@@ -102,6 +102,7 @@ type DatasetRepository interface {
 type RunRepository interface {
 	CreateRun(ctx context.Context, projectID, idempotencyKey string, pipelineSpecJSON, runSpecJSON []byte, specHash string) (RunRecord, bool, error)
 	GetRun(ctx context.Context, projectID, id string) (RunRecord, error)
+	UpdateDerivedStatus(ctx context.Context, projectID, runID string, status domain.RunState) error
 }
 
 // ArtifactRepository manages project-scoped artifacts.

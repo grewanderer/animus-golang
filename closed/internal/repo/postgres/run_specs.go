@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/animus-labs/animus-go/closed/internal/domain"
 	"github.com/animus-labs/animus-go/closed/internal/repo"
 )
 
@@ -36,6 +37,12 @@ const (
 	selectRunByIdempotencyQuery = `SELECT run_id, project_id, idempotency_key, status, pipeline_spec, run_spec, spec_hash, created_at
 	 FROM runs
 	 WHERE project_id = $1 AND idempotency_key = $2`
+
+	selectRunStatusQuery = `SELECT status
+	 FROM runs
+	 WHERE project_id = $1 AND run_id = $2`
+
+	updateRunStatusQuery = `UPDATE runs SET status = $1 WHERE project_id = $2 AND run_id = $3`
 )
 
 func NewRunSpecStore(db DB) *RunSpecStore {
@@ -69,7 +76,7 @@ func (s *RunSpecStore) CreateRun(ctx context.Context, projectID, idempotencyKey 
 	}
 
 	runID := uuid.NewString()
-	status := "pending"
+	status := string(domain.RunStateCreated)
 
 	var record repo.RunRecord
 	err := s.db.QueryRowContext(
@@ -119,6 +126,45 @@ func (s *RunSpecStore) GetRun(ctx context.Context, projectID, id string) (repo.R
 		return repo.RunRecord{}, handleNotFound(err)
 	}
 	return record, nil
+}
+
+func (s *RunSpecStore) UpdateDerivedStatus(ctx context.Context, projectID, runID string, status domain.RunState) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("run spec store not initialized")
+	}
+	projectID = strings.TrimSpace(projectID)
+	runID = strings.TrimSpace(runID)
+	if projectID == "" {
+		return fmt.Errorf("project id is required")
+	}
+	if runID == "" {
+		return fmt.Errorf("run id is required")
+	}
+	next := domain.NormalizeRunState(string(status))
+	if next == "" {
+		return fmt.Errorf("status is required")
+	}
+
+	var currentRaw string
+	row := s.db.QueryRowContext(ctx, selectRunStatusQuery, projectID, runID)
+	if err := row.Scan(&currentRaw); err != nil {
+		return handleNotFound(err)
+	}
+	current := domain.NormalizeRunState(currentRaw)
+	if current == "" {
+		current = domain.RunStateCreated
+	}
+	if current == next {
+		return nil
+	}
+	if !domain.CanTransition(current, next) {
+		return fmt.Errorf("invalid status transition from %s to %s", current, next)
+	}
+	_, err := s.db.ExecContext(ctx, updateRunStatusQuery, string(next), projectID, runID)
+	if err != nil {
+		return fmt.Errorf("update run status: %w", err)
+	}
+	return nil
 }
 
 func (s *RunSpecStore) GetRunByIdempotencyKey(ctx context.Context, projectID, idempotencyKey string) (repo.RunRecord, error) {
