@@ -445,6 +445,27 @@
           "path": "closed/experiments/run_dryrun_api.go",
           "status": "done",
           "notes": "DryRunStarted/Completed/Failed and step-level audit events recorded."
+        },
+        {
+          "id": "P2-SM-001",
+          "title": "Execution state enums and derivation logic",
+          "path": "closed/internal/domain/execution_state.go, closed/internal/execution/state/*.go",
+          "status": "done",
+          "notes": "Derived run/step state logic and transition guardrails; wired into APIs: yes via run state service."
+        },
+        {
+          "id": "P2-SM-API-001",
+          "title": "Derived run state in experiments APIs",
+          "path": "closed/experiments/run_spec_api.go, closed/experiments/run_plan_api.go, closed/experiments/run_dryrun_api.go",
+          "status": "done",
+          "notes": "Endpoints return derived state and enforce transitions via run state service."
+        },
+        {
+          "id": "P2-SM-AUD-001",
+          "title": "State-machine aligned audit events",
+          "path": "closed/internal/service/runs/service.go, closed/experiments/run_dryrun_api.go",
+          "status": "done",
+          "notes": "Run-level dry-run transition audits emitted through the state service."
         }
       ],
       "artifacts": [],
