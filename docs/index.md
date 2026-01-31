@@ -2,6 +2,12 @@
 
 Control, not a demo. This documentation describes the deterministic control plane, on-prem deployment model, and execution contracts.
 
+## Start here
+- Architecture: `docs/architecture.md`
+- Execution model: `docs/execution.md`
+- Demo quickstart: `docs/demo.md`
+- ADRs: `docs/adr/README.md`
+
 ## Navigation
 - Architecture: `docs/architecture.md`
 - Execution contracts: `docs/execution.md`

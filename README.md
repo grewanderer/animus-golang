@@ -35,15 +35,32 @@ One command:
 make demo
 ```
 
-Expected output includes:
-- "==> services are running"
-- "==> animus demo (gateway=...)"
-- "==> smoke check ok"
+CI-style smoke check:
+
+```bash
+make demo-smoke
+```
+
+Expected output (example):
+
+```
+==> starting local control plane
+==> waiting for gateway http://localhost:8080/healthz
+==> gateway listening on http://localhost:8080
+==> animus demo (gateway=http://localhost:8080, request_id=...)
+==> smoke check ok
+```
+
+Stop: Ctrl+C (the script shuts down services on exit).
 
 Troubleshooting:
-- Port 8080 in use: set `ANIMUS_GATEWAY_PORT`.
-- Docker not running: start Docker or Docker Desktop.
-- Missing Go toolchain: install Go 1.22+.
+- Port already in use: set `ANIMUS_GATEWAY_PORT`.
+- Missing curl: install curl or python3.
+- Go toolchain mismatch: install Go 1.22+.
+
+Docs locations:
+- Open demo docs live in `open/demo/`.
+- Platform docs live in `docs/`.
 
 ## Architecture
 - Control plane services: closed/ (experiments, dataset-registry, quality, lineage, audit).
