@@ -18,7 +18,6 @@ import (
 	"github.com/animus-labs/animus-go/closed/internal/platform/auth"
 	"github.com/animus-labs/animus-go/closed/internal/repo"
 	"github.com/animus-labs/animus-go/closed/internal/repo/postgres"
-	"github.com/animus-labs/animus-go/closed/internal/service/runs"
 )
 
 const runSpecVersion = "1.0"
@@ -57,11 +56,14 @@ type createRunResponse struct {
 }
 
 type getRunResponse struct {
-	RunID     string          `json:"runId"`
-	Status    string          `json:"status"`
-	SpecHash  string          `json:"specHash"`
-	CreatedAt time.Time       `json:"createdAt"`
-	RunSpec   json.RawMessage `json:"runSpec,omitempty"`
+	RunID          string          `json:"runId"`
+	Status         string          `json:"status"`
+	State          string          `json:"state"`
+	SpecHash       string          `json:"specHash"`
+	CreatedAt      time.Time       `json:"createdAt"`
+	PlanExists     bool            `json:"planExists"`
+	AttemptsByStep map[string]int  `json:"attemptsByStep,omitempty"`
+	RunSpec        json.RawMessage `json:"runSpec,omitempty"`
 }
 
 func (api *experimentsAPI) handleCreateRun(w http.ResponseWriter, r *http.Request) {
@@ -220,13 +222,7 @@ func (api *experimentsAPI) handleGetRun(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	stateSvc := runs.New(runStore, planStore, stepStore)
-	if stateSvc == nil {
-		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
-		return
-	}
-
-	record, derived, err := stateSvc.Derive(r.Context(), projectID, runID)
+	record, err := runStore.GetRun(r.Context(), projectID, runID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			api.writeError(w, r, http.StatusNotFound, "not_found")
@@ -236,12 +232,27 @@ func (api *experimentsAPI) handleGetRun(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	planSpec, planExists, err := loadExecutionPlan(r.Context(), planStore, projectID, runID)
+	if err != nil {
+		api.writeRepoError(w, r, err)
+		return
+	}
+	stepExecutions, err := stepStore.ListByRun(r.Context(), projectID, runID)
+	if err != nil {
+		api.writeRepoError(w, r, err)
+		return
+	}
+	derivedState := deriveRunStateFromRecords(planSpec, planExists, stepExecutions)
+
 	api.writeJSON(w, http.StatusOK, getRunResponse{
-		RunID:     record.ID,
-		Status:    string(derived),
-		SpecHash:  record.SpecHash,
-		CreatedAt: record.CreatedAt,
-		RunSpec:   json.RawMessage(record.RunSpec),
+		RunID:          record.ID,
+		Status:         record.Status,
+		State:          string(derivedState.State),
+		SpecHash:       record.SpecHash,
+		CreatedAt:      record.CreatedAt,
+		PlanExists:     derivedState.PlanExists,
+		AttemptsByStep: derivedState.AttemptsMap,
+		RunSpec:        json.RawMessage(record.RunSpec),
 	})
 }
 

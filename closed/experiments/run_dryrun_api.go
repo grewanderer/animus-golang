@@ -28,8 +28,11 @@ type dryRunResponse struct {
 }
 
 type dryRunExecutionsResponse struct {
-	RunID      string                  `json:"runId"`
-	Executions []stepExecutionResponse `json:"executions"`
+	RunID          string                  `json:"runId"`
+	State          string                  `json:"state"`
+	PlanExists     bool                    `json:"planExists"`
+	AttemptsByStep map[string]int          `json:"attemptsByStep,omitempty"`
+	Executions     []stepExecutionResponse `json:"executions"`
 }
 
 type stepExecutionResponse struct {
@@ -229,8 +232,9 @@ func (api *experimentsAPI) handleGetDryRun(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	planStore := postgres.NewPlanStore(api.db)
 	stepStore := postgres.NewStepExecutionStore(api.db)
-	if stepStore == nil {
+	if planStore == nil || stepStore == nil {
 		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 		return
 	}
@@ -243,6 +247,13 @@ func (api *experimentsAPI) handleGetDryRun(w http.ResponseWriter, r *http.Reques
 		api.writeError(w, r, http.StatusNotFound, "not_found")
 		return
 	}
+
+	planSpec, planExists, err := loadExecutionPlan(r.Context(), planStore, projectID, runID)
+	if err != nil {
+		api.writeRepoError(w, r, err)
+		return
+	}
+	derivedState := deriveRunStateFromRecords(planSpec, planExists, records)
 
 	executions := make([]stepExecutionResponse, 0, len(records))
 	for _, record := range records {
@@ -259,8 +270,11 @@ func (api *experimentsAPI) handleGetDryRun(w http.ResponseWriter, r *http.Reques
 	}
 
 	api.writeJSON(w, http.StatusOK, dryRunExecutionsResponse{
-		RunID:      runID,
-		Executions: executions,
+		RunID:          runID,
+		State:          string(derivedState.State),
+		PlanExists:     derivedState.PlanExists,
+		AttemptsByStep: derivedState.AttemptsMap,
+		Executions:     executions,
 	})
 }
 

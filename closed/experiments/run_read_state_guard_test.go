@@ -15,7 +15,7 @@ func TestReadHandlersDoNotMutateRunState(t *testing.T) {
 	planFile := filepath.Join(dir, "run_plan_api.go")
 	dryRunFile := filepath.Join(dir, "run_dryrun_api.go")
 
-	requireNoMutation(t, specFile, "handleGetRun", true)
+	requireNoMutation(t, specFile, "handleGetRun", false)
 	requireNoMutation(t, planFile, "handleGetRunPlan", false)
 	requireNoMutation(t, dryRunFile, "handleGetDryRun", false)
 }
