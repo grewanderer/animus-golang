@@ -1,6 +1,6 @@
 {
   "roadmap_version": 1,
-  "generated_at": "2026-01-30",
+  "generated_at": "2026-01-31",
   "spec": {
     "name": "Animus Datalab - Final Technical Specification (Production-Grade)",
     "source_path": "docs/\u0418\u0442\u043e\u0433\u043e\u0432\u043e\u0435 \u0442\u0435\u0445\u043d\u0438\u0447\u0435\u0441\u043a\u043e\u0435 \u0437\u0430\u0434\u0430\u043d\u0438\u0435.md",
@@ -346,10 +346,39 @@
       "dependencies": [
         "P1"
       ],
-      "status": "not_started",
-      "work_items": [],
+      "status": "in_progress",
+      "work_items": [
+        {
+          "id": "P2-SPEC-001",
+          "title": "PipelineSpec domain structs and contract",
+          "path": "closed/internal/domain/pipeline_spec.go, api/pipeline_spec.yaml, docs/pipeline-spec.md",
+          "status": "done",
+          "notes": "PipelineSpec template uses datasetRef; no bindings or runtime execution."
+        },
+        {
+          "id": "P2-RUNSPEC-001",
+          "title": "RunSpec domain types",
+          "path": "closed/internal/domain/run_spec.go",
+          "status": "done",
+          "notes": "RunSpec binds datasetRef -> datasetVersionId, commit SHA, and envLock; wired into APIs: no."
+        },
+        {
+          "id": "P2-VAL-001",
+          "title": "Strict spec validators + tests",
+          "path": "closed/internal/execution/specvalidator/*.go",
+          "status": "done",
+          "notes": "Validates DAG correctness, digest-pinned images, bindings completeness; wired into APIs: no."
+        },
+        {
+          "id": "P2-ADR-001",
+          "title": "Determinism and execution contracts ADR",
+          "path": "docs/adr/0003-execution-contracts-and-determinism.md",
+          "status": "done",
+          "notes": "Documents template vs binding separation and determinism model."
+        }
+      ],
       "artifacts": [],
-      "last_updated": "2026-01-30"
+      "last_updated": "2026-01-31"
     },
     {
       "id": "P3",
@@ -544,9 +573,9 @@
     }
   ],
   "implementation": {
-    "active_phase_id": "P1",
+    "active_phase_id": "P2",
     "target_area": "closed",
-    "last_updated": "2026-01-30",
-    "notes": "P1 complete: artifacts presigned URLs, retention metadata, and audit export MVP delivered."
+    "last_updated": "2026-01-31",
+    "notes": "P2 in progress: execution contracts and deterministic validation landing."
   }
 }
