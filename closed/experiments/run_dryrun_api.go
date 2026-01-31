@@ -123,7 +123,7 @@ func (api *experimentsAPI) handleDryRun(w http.ResponseWriter, r *http.Request) 
 
 	_, _, derivedState, err := stateSvc.DeriveAndPersistWithAudit(r.Context(), auditAppender, auditInfo, projectID, runID, runRecord.SpecHash)
 	if err != nil {
-		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		api.writeRepoError(w, r, err)
 		return
 	}
 	if derivedState == domain.RunStateDryRunSucceeded || derivedState == domain.RunStateDryRunFailed {
@@ -168,7 +168,7 @@ func (api *experimentsAPI) handleDryRun(w http.ResponseWriter, r *http.Request) 
 
 	_, err = stateSvc.MarkDryRunRunningWithAudit(r.Context(), auditAppender, auditInfo, projectID, runID, runRecord.SpecHash)
 	if err != nil {
-		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		api.writeRepoError(w, r, err)
 		return
 	}
 
@@ -193,7 +193,7 @@ func (api *experimentsAPI) handleDryRun(w http.ResponseWriter, r *http.Request) 
 
 	_, _, derivedFinal, err := stateSvc.DeriveAndPersistWithAudit(r.Context(), auditAppender, auditInfo, projectID, runID, runRecord.SpecHash)
 	if err != nil {
-		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		api.writeRepoError(w, r, err)
 		return
 	}
 

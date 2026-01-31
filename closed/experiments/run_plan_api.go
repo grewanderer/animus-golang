@@ -133,7 +133,7 @@ func (api *experimentsAPI) handlePlanRun(w http.ResponseWriter, r *http.Request)
 	}
 	_, _, derived, err := stateSvc.DeriveAndPersistWithAudit(r.Context(), auditAppender, auditInfo, projectID, runID, runRecord.SpecHash)
 	if err != nil {
-		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		api.writeRepoError(w, r, err)
 		return
 	}
 

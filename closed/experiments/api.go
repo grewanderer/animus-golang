@@ -17,6 +17,7 @@ import (
 	"github.com/animus-labs/animus-go/closed/internal/platform/auth"
 	"github.com/animus-labs/animus-go/closed/internal/platform/lineageevent"
 	"github.com/animus-labs/animus-go/closed/internal/platform/objectstore"
+	"github.com/animus-labs/animus-go/closed/internal/repo"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/minio/minio-go/v7"
@@ -1187,6 +1188,28 @@ func (api *experimentsAPI) writeError(w http.ResponseWriter, r *http.Request, st
 		"error":      code,
 		"request_id": r.Header.Get("X-Request-Id"),
 	})
+}
+
+func (api *experimentsAPI) writeRepoError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, repo.ErrInvalidTransition):
+		api.writeError(w, r, http.StatusConflict, "invalid_transition")
+		return
+	case errors.Is(err, repo.ErrNotFound), errors.Is(err, sql.ErrNoRows):
+		api.writeError(w, r, http.StatusNotFound, "not_found")
+		return
+	case isForeignKeyViolation(err):
+		api.writeError(w, r, http.StatusNotFound, "not_found")
+		return
+	case isUniqueViolation(err):
+		api.writeError(w, r, http.StatusConflict, "conflict")
+		return
+	default:
+		if api.logger != nil {
+			api.logger.Error("request failed", "err", err, "path", r.URL.Path, "method", r.Method)
+		}
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+	}
 }
 
 func requestIP(remoteAddr string) net.IP {
