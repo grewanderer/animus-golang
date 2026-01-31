@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -50,8 +51,20 @@ func TestWriteRepoError(t *testing.T) {
 			wantCode:   "not_found",
 		},
 		{
+			name:       "foreign key violation wrapped",
+			err:        fmt.Errorf("wrap: %w", &pgconn.PgError{Code: "23503"}),
+			wantStatus: http.StatusNotFound,
+			wantCode:   "not_found",
+		},
+		{
 			name:       "unique violation",
 			err:        &pgconn.PgError{Code: "23505"},
+			wantStatus: http.StatusConflict,
+			wantCode:   "conflict",
+		},
+		{
+			name:       "unique violation wrapped",
+			err:        fmt.Errorf("wrap: %w", &pgconn.PgError{Code: "23505"}),
 			wantStatus: http.StatusConflict,
 			wantCode:   "conflict",
 		},
