@@ -410,6 +410,41 @@
           "path": "closed/experiments/run_spec_api.go, closed/experiments/run_plan_api.go",
           "status": "done",
           "notes": "RunCreated, RunValidated, ExecutionPlanned audit events appended."
+        },
+        {
+          "id": "P2-DRY-DB-001",
+          "title": "Step executions schema (append-only)",
+          "path": "closed/migrations/000016_step_executions.up.sql, closed/migrations/000016_step_executions.down.sql",
+          "status": "done",
+          "notes": "Append-only step attempt records with project scoping and immutability triggers."
+        },
+        {
+          "id": "P2-DRY-REPO-001",
+          "title": "Step execution repository",
+          "path": "closed/internal/repo/interfaces.go, closed/internal/repo/postgres/step_executions.go",
+          "status": "done",
+          "notes": "Project-scoped inserts + list queries; idempotent insert behavior; wired into APIs: yes."
+        },
+        {
+          "id": "P2-DRY-EXEC-001",
+          "title": "Deterministic dry-run executor",
+          "path": "closed/internal/execution/executor/dryrun/*.go",
+          "status": "done",
+          "notes": "Deterministic simulation using spec_hash+run_id seed; retries and skips modeled; no runtime execution."
+        },
+        {
+          "id": "P2-DRY-API-001",
+          "title": "Dry-run API endpoints",
+          "path": "closed/experiments/run_dryrun_api.go, closed/experiments/api.go",
+          "status": "done",
+          "notes": "POST/GET dry-run endpoints; idempotent behavior; returns stored step executions."
+        },
+        {
+          "id": "P2-DRY-AUD-001",
+          "title": "Dry-run audit events",
+          "path": "closed/experiments/run_dryrun_api.go",
+          "status": "done",
+          "notes": "DryRunStarted/Completed/Failed and step-level audit events recorded."
         }
       ],
       "artifacts": [],
