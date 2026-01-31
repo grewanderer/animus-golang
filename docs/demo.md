@@ -69,4 +69,4 @@ flowchart LR
 - Docker not running: start Docker or Docker Desktop.
 - Long startup: wait for migrations to complete.
 - Missing curl: install curl or python3.
-- Cleanup: `make demo-down`.
+- Cleanup: `make demo-down` (no-op if Docker is not installed).

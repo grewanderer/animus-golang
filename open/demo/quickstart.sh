@@ -11,6 +11,7 @@ HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-30}"
 HEALTH_POLL_SECONDS="${HEALTH_POLL_SECONDS:-1}"
 LOG_TAIL_LINES="${LOG_TAIL_LINES:-200}"
 DEMO_MODE="full"
+SKIP_CLEANUP=0
 
 export ANIMUS_GATEWAY_URL="${ANIMUS_GATEWAY_URL:-http://localhost:${GATEWAY_PORT}}"
 export ANIMUS_USERSPACE_URL="${ANIMUS_USERSPACE_URL:-http://localhost:${USERSPACE_PORT}}"
@@ -24,7 +25,7 @@ export ANIMUS_MINIO_BUCKET_DATASETS="${ANIMUS_MINIO_BUCKET_DATASETS:-datasets}"
 export ANIMUS_MINIO_BUCKET_ARTIFACTS="${ANIMUS_MINIO_BUCKET_ARTIFACTS:-artifacts}"
 export DATABASE_URL="${DATABASE_URL:-postgres://animus:animus@postgres:5432/animus?sslmode=disable}"
 
-COMPOSE_CMD=""
+COMPOSE_CMD=()
 
 usage() {
   cat <<USAGE
@@ -52,24 +53,18 @@ require_docker() {
 
 detect_compose_cmd() {
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    COMPOSE_CMD="docker compose"
-    return
+    COMPOSE_CMD=(docker compose)
+    return 0
   fi
   if command -v docker-compose >/dev/null 2>&1; then
-    COMPOSE_CMD="docker-compose"
-    return
+    COMPOSE_CMD=(docker-compose)
+    return 0
   fi
-  cat <<MSG >&2
-Docker Compose is required for the full demo.
-Install Docker Desktop (includes 'docker compose') or the legacy 'docker-compose' CLI.
-If you only need a health-check smoke test, use:
-  DEMO_NO_DOCKER=1 make demo-smoke DEMO_BASE_URL=http://localhost:8080
-MSG
-  exit 1
+  return 1
 }
 
 compose() {
-  ${COMPOSE_CMD} -f "${COMPOSE_FILE}" --project-name "${COMPOSE_PROJECT_NAME}" "$@"
+  "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" --project-name "${COMPOSE_PROJECT_NAME}" "$@"
 }
 
 http_get_status() {
@@ -360,7 +355,10 @@ tail_logs() {
 
 cleanup() {
   local code=$?
-  if [ -n "${COMPOSE_CMD}" ]; then
+  if [ "${SKIP_CLEANUP}" = "1" ]; then
+    exit "${code}"
+  fi
+  if [ "${#COMPOSE_CMD[@]}" -gt 0 ]; then
     if [ "${code}" -ne 0 ]; then
       tail_logs postgres minio dataset-registry experiments audit gateway userspace-runner || true
     fi
@@ -381,13 +379,21 @@ elif [ -n "${1:-}" ]; then
   exit 2
 fi
 
-require_http_tooling
-
 if [ "${DEMO_MODE}" = "down" ]; then
-  detect_compose_cmd
-  compose down -v
+  SKIP_CLEANUP=1
+  if detect_compose_cmd; then
+    if ! compose ps >/dev/null 2>&1; then
+      echo "Docker compose not found; nothing to tear down."
+      exit 0
+    fi
+    compose down -v
+    exit $?
+  fi
+  echo "Docker compose not found; nothing to tear down."
   exit 0
 fi
+
+require_http_tooling
 
 if [ "${DEMO_NO_DOCKER:-0}" = "1" ]; then
   if [ "${DEMO_MODE}" != "smoke" ]; then
@@ -420,7 +426,15 @@ if [ "${DEMO_NO_DOCKER:-0}" = "1" ]; then
 fi
 
 require_docker
-detect_compose_cmd
+if ! detect_compose_cmd; then
+  cat <<MSG >&2
+Docker Compose is required for the full demo.
+Install Docker Desktop (includes 'docker compose') or the legacy 'docker-compose' CLI.
+If you only need a health-check smoke test, use:
+  DEMO_NO_DOCKER=1 make demo-smoke DEMO_BASE_URL=http://localhost:8080
+MSG
+  exit 1
+fi
 
 echo "==> starting demo stack"
 compose up -d --build
