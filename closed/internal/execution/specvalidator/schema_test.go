@@ -15,7 +15,7 @@ func TestPipelineSpecSchemaLoads(t *testing.T) {
 		t.Fatalf("read schema: %v", err)
 	}
 
-	var doc map[string]interface{}
+	var doc map[string]any
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("unmarshal schema: %v", err)
 	}
@@ -23,14 +23,31 @@ func TestPipelineSpecSchemaLoads(t *testing.T) {
 	requiredKeys := []string{
 		"$schema",
 		"$id",
+		"title",
+		"type",
+		"properties",
+		"$defs",
+	}
+	for _, key := range requiredKeys {
+		if _, ok := doc[key]; !ok {
+			t.Fatalf("missing top-level key %q", key)
+		}
+	}
+
+	properties, ok := doc["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("properties is not a map")
+	}
+
+	requiredProps := []string{
 		"apiVersion",
 		"kind",
 		"specVersion",
 		"spec",
 	}
-	for _, key := range requiredKeys {
-		if _, ok := doc[key]; !ok {
-			t.Fatalf("missing top-level key %q", key)
+	for _, key := range requiredProps {
+		if _, ok := properties[key]; !ok {
+			t.Fatalf("missing properties key %q", key)
 		}
 	}
 }
