@@ -44,14 +44,16 @@ make demo-smoke
 Expected output (example):
 
 ```
-==> starting local control plane
+==> starting demo stack
 ==> waiting for gateway http://localhost:8080/healthz
-==> gateway listening on http://localhost:8080
-==> animus demo (gateway=http://localhost:8080, request_id=...)
-==> smoke check ok
+==> create project
+==> create run
+==> dry-run
+==> userspace execution (data plane surface)
+==> demo complete
 ```
 
-Stop: Ctrl+C (the script shuts down services on exit).
+Stop: Ctrl+C (the script shuts down services on exit). For manual cleanup: `make demo-down`.
 
 Troubleshooting:
 - Port already in use: set `ANIMUS_GATEWAY_PORT`.

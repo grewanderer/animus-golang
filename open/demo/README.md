@@ -1,23 +1,29 @@
-# Demo dataset
+# Full-surface demo
 
-Control, not a demo. This directory contains the deterministic dataset used by the demo runner.
+Control, not a demo. This directory contains the deterministic dataset and userspace runner used by the full-surface demo.
 Requirements: docker compose (or docker-compose), curl (preferred) or python3.
 
-Recommended quickstart:
+Quickstart:
 
 ```bash
 make demo
 ```
 
-Direct runner invocation (requires a running gateway):
+Smoke check:
 
 ```bash
-go run ./open/cmd/demo -gateway http://localhost:8080 -dataset open/demo/data/demo.csv
+make demo-smoke
 ```
 
-The runner creates:
-- Dataset and immutable dataset version
-- Quality rule and evaluation
-- Experiment and experiment run
-- Lineage edges
-- Audit events
+Components:
+- `docker-compose.yml`: control plane + userspace demo stack.
+- `data/`: deterministic demo dataset.
+- `userspace/`: allowlisted data plane simulation container.
+
+The demo runs:
+- Project creation and scoping
+- Dataset registry + dataset version upload
+- Artifact presign + upload
+- Run create -> plan -> dry-run -> derived state
+- Audit export
+- Userspace execution simulation (no user code in control plane)
