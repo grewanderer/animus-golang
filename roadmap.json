@@ -375,6 +375,41 @@
           "path": "docs/adr/0003-execution-contracts-and-determinism.md",
           "status": "done",
           "notes": "Documents template vs binding separation and determinism model."
+        },
+        {
+          "id": "P2-RUN-DB-001",
+          "title": "Runs + execution plans schema",
+          "path": "closed/migrations/000015_runs_and_plans.up.sql, closed/migrations/000015_runs_and_plans.down.sql",
+          "status": "done",
+          "notes": "Adds runs/execution_plans with immutability triggers and project scoping."
+        },
+        {
+          "id": "P2-RUN-REPO-001",
+          "title": "Run and plan repositories",
+          "path": "closed/internal/repo/interfaces.go, closed/internal/repo/postgres/run_specs.go, closed/internal/repo/postgres/plans.go",
+          "status": "done",
+          "notes": "Idempotent CreateRun and plan upsert; project-scoped queries; wired into APIs: yes."
+        },
+        {
+          "id": "P2-PLAN-001",
+          "title": "Deterministic execution planner",
+          "path": "closed/internal/domain/execution_plan.go, closed/internal/execution/plan/*.go",
+          "status": "done",
+          "notes": "Topological ordering with step-name tie-breakers; retry policies preserved."
+        },
+        {
+          "id": "P2-RUN-API-001",
+          "title": "Project-scoped run endpoints",
+          "path": "closed/experiments/run_spec_api.go, closed/experiments/run_plan_api.go, closed/experiments/api.go",
+          "status": "done",
+          "notes": "POST/GET runs and plan endpoints; validation, persistence, and deterministic hashing; wired into APIs: yes."
+        },
+        {
+          "id": "P2-AUD-001",
+          "title": "Run lifecycle audit events",
+          "path": "closed/experiments/run_spec_api.go, closed/experiments/run_plan_api.go",
+          "status": "done",
+          "notes": "RunCreated, RunValidated, ExecutionPlanned audit events appended."
         }
       ],
       "artifacts": [],
