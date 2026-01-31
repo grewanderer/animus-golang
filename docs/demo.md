@@ -20,8 +20,8 @@ Expected output includes:
 
 ## Requirements
 - Go 1.22+
-- Docker and docker compose
-- curl
+- Docker and docker compose (or docker-compose)
+- curl (preferred) or python3
 
 ## Health checks
 - Gateway: `http://localhost:8080/healthz`

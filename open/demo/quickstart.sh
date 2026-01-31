@@ -9,33 +9,43 @@ HEALTH_POLL_SECONDS="${HEALTH_POLL_SECONDS:-1}"
 export ANIMUS_GATEWAY_URL="${ANIMUS_GATEWAY_URL:-http://localhost:${GATEWAY_PORT}}"
 export ANIMUS_DEV_SKIP_UI="${ANIMUS_DEV_SKIP_UI:-1}"
 
-if ! command -v curl >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
-  echo "curl or python3 is required for health checks" >&2
-  exit 1
-fi
+COMPOSE_CMD=""
+log_file=""
 
-log_file="$(mktemp -t animus-demo.XXXXXX.log)"
-
-tail_logs() {
-  if [ -f "${log_file}" ]; then
-    echo "==> last logs" >&2
-    tail -n 200 "${log_file}" >&2 || true
+require_tooling() {
+  if ! command -v curl >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+    echo "curl (preferred) or python3 is required for health checks" >&2
+    exit 1
   fi
 }
 
-http_ok() {
+detect_compose_cmd() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    COMPOSE_CMD="docker compose"
+    return
+  fi
+  if command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE_CMD="docker-compose"
+    return
+  fi
+  echo "docker compose (preferred) or docker-compose is required" >&2
+  exit 1
+}
+
+http_get_status() {
   local url="$1"
   if command -v curl >/dev/null 2>&1; then
-    curl -sf "${url}" >/dev/null
-    return $?
+    curl -s -o /dev/null -w "%{http_code}" "${url}" || true
+    return 0
   fi
-  python3 - <<PY >/dev/null 2>&1
-import sys, urllib.request
+  python3 - <<PY || true
+import sys
+import urllib.request
 try:
     with urllib.request.urlopen("${url}") as resp:
-        sys.exit(0 if 200 <= resp.status < 300 else 1)
+        sys.stdout.write(str(resp.status))
 except Exception:
-    sys.exit(1)
+    sys.stdout.write("000")
 PY
 }
 
@@ -44,13 +54,22 @@ wait_for_health() {
   local timeout_s="$2"
   local poll_s="$3"
   local deadline=$((SECONDS + timeout_s))
+  local status=""
   while [ "${SECONDS}" -lt "${deadline}" ]; do
-    if http_ok "${url}"; then
+    status="$(http_get_status "${url}")"
+    if [ "${status}" = "200" ]; then
       return 0
     fi
     sleep "${poll_s}"
   done
   return 1
+}
+
+tail_logs() {
+  if [ -f "${log_file}" ]; then
+    echo "==> last logs" >&2
+    tail -n 200 "${log_file}" >&2 || true
+  fi
 }
 
 cleanup() {
@@ -59,12 +78,21 @@ cleanup() {
     kill "${dev_pid}" >/dev/null 2>&1 || true
   fi
   wait "${dev_pid:-}" >/dev/null 2>&1 || true
+  if [ -n "${COMPOSE_CMD}" ] && [ "${ANIMUS_DEV_SKIP_INFRA:-0}" != "1" ]; then
+    ${COMPOSE_CMD} -f "${ROOT_DIR}/closed/deploy/docker-compose.yml" down >/dev/null 2>&1 || true
+  fi
   if [ -f "${log_file}" ]; then
     rm -f "${log_file}" || true
   fi
   exit "${code}"
 }
 trap cleanup EXIT INT TERM
+
+require_tooling
+detect_compose_cmd
+
+export COMPOSE_BIN="${COMPOSE_CMD} -f ${ROOT_DIR}/closed/deploy/docker-compose.yml"
+log_file="$(mktemp -t animus-demo.XXXXXX.log)"
 
 echo "==> starting local control plane"
 "${ROOT_DIR}/closed/scripts/dev.sh" >"${log_file}" 2>&1 &
@@ -85,7 +113,7 @@ echo "==> running demo"
 )
 
 echo "==> smoke check ok"
-if ! http_ok "${ANIMUS_GATEWAY_URL}/healthz"; then
+if [ "$(http_get_status "${ANIMUS_GATEWAY_URL}/healthz")" != "200" ]; then
   echo "gateway health check failed" >&2
   tail_logs
   exit 1

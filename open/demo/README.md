@@ -1,6 +1,7 @@
 # Demo dataset
 
 Control, not a demo. This directory contains the deterministic dataset used by the demo runner.
+Requirements: docker compose (or docker-compose), curl (preferred) or python3.
 
 Recommended quickstart:
 

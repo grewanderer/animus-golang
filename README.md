@@ -27,7 +27,7 @@ Control, not a demo. Deterministic, auditable ML execution for on-prem and priva
 - Operability: append-only records, idempotent APIs, exportable evidence.
 
 ## Quickstart (open demo)
-Requirements: Go, Docker, docker compose, curl.
+Requirements: Go, Docker, docker compose (or docker-compose), curl (preferred) or python3.
 
 One command:
 
