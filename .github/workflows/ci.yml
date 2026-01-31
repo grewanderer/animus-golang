@@ -22,8 +22,8 @@ jobs:
       - name: install golangci-lint
         run: |
           mkdir -p .bin
-          echo "${PWD}/.bin" >> "${GITHUB_PATH}"
           GOBIN="${PWD}/.bin" go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
-          golangci-lint version
+          echo "${PWD}/.bin" >> "${GITHUB_PATH}"
+          "${PWD}/.bin/golangci-lint" version
       - run: make lint
       - run: make test
