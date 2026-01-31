@@ -15,7 +15,7 @@ export GOCACHE := $(CACHE_DIR)/go-build
 export GOMODCACHE := $(CACHE_DIR)/go-mod
 export GOTMPDIR := $(CACHE_DIR)/go-tmp
 
-.PHONY: bootstrap fmt test lint build dev demo demo-smoke
+.PHONY: bootstrap fmt test lint build dev demo demo-smoke demo-down
 
 bootstrap:
 	@mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(GOTMPDIR)"
@@ -88,4 +88,15 @@ demo:
 	@ANIMUS_DEV_SKIP_UI=1 ./open/demo/quickstart.sh
 
 demo-smoke:
-	@ANIMUS_DEV_SKIP_UI=1 ./open/demo/quickstart.sh
+	@ANIMUS_DEV_SKIP_UI=1 ANIMUS_DEMO_MODE=smoke ./open/demo/quickstart.sh
+
+demo-down:
+	@COMPOSE_CMD=$$(docker compose version >/dev/null 2>&1 && echo "docker compose" || true); \
+	if [ -z "$$COMPOSE_CMD" ] && command -v docker-compose >/dev/null 2>&1; then \
+		COMPOSE_CMD="docker-compose"; \
+	fi; \
+	if [ -z "$$COMPOSE_CMD" ]; then \
+		echo "docker compose (preferred) or docker-compose is required"; \
+		exit 1; \
+	fi; \
+	$$COMPOSE_CMD -f open/demo/docker-compose.yml --project-name $${ANIMUS_DEMO_COMPOSE_PROJECT:-animus-demo} down -v
