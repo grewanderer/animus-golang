@@ -7,7 +7,10 @@ COMPOSE_BIN ?= docker compose -f closed/deploy/docker-compose.yml
 PY_SDK_DIR ?= open/sdk/python
 PY_SDK_SUBMODULE ?= open/sdk
 GO_PACKAGES ?= ./...
-GOLANGCI_LINT ?= golangci-lint
+LINT_BIN_DIR := $(CURDIR)/.bin
+GOLANGCI_LINT_VERSION ?= v1.64.8
+GOLANGCI_LINT_VERSION_STR ?= 1.64.8
+GOLANGCI_LINT ?= $(LINT_BIN_DIR)/golangci-lint
 GO_FILES := $(shell find . -type f -name '*.go' -not -path './.cache/*' -not -path './.git/*')
 
 CACHE_DIR := $(CURDIR)/.cache
@@ -41,9 +44,10 @@ lint:
 	@echo "==> go vet"
 	@$(GO) vet $(GO_PACKAGES)
 	@echo "==> golangci-lint"
-	@if ! command -v $(GOLANGCI_LINT) >/dev/null 2>&1; then \
-		echo "golangci-lint not installed. Run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
-		exit 1; \
+	@mkdir -p "$(LINT_BIN_DIR)"
+	@if [ ! -x "$(GOLANGCI_LINT)" ] || ! "$(GOLANGCI_LINT)" version 2>/dev/null | grep -q "$(GOLANGCI_LINT_VERSION_STR)"; then \
+		echo "==> installing golangci-lint $(GOLANGCI_LINT_VERSION)"; \
+		GOBIN="$(LINT_BIN_DIR)" $(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
 	fi
 	@$(GOLANGCI_LINT) run
 	@echo "==> python compileall"

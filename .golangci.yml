@@ -1,8 +1,6 @@
 run:
   timeout: 5m
   tests: true
-  skip-dirs:
-    - .cache
 linters:
   disable-all: true
   enable:
@@ -20,5 +18,7 @@ linters-settings:
           - pkg: "github.com/animus-labs/animus-go/closed/internal/runtimeexec"
             desc: "control plane must not import runtime execution packages"
 issues:
+  exclude-dirs:
+    - .cache
   max-issues-per-linter: 0
   max-same-issues: 0
