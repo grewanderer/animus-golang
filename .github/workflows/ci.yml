@@ -19,5 +19,11 @@ jobs:
         with:
           python-version: "3.10"
       - run: make bootstrap
+      - name: install golangci-lint
+        run: |
+          mkdir -p .bin
+          echo "${PWD}/.bin" >> "${GITHUB_PATH}"
+          GOBIN="${PWD}/.bin" go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.8.0
+          golangci-lint version
       - run: make lint
       - run: make test
