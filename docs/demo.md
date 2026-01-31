@@ -47,6 +47,14 @@ Regenerate:
 DEMO_GOLDEN=1 make demo
 ```
 
+Regeneration requires Docker daemon access. In restricted environments (no Docker), the transcript cannot be regenerated.
+
+Optional smoke transcript (requires running services):
+
+```bash
+DEMO_GOLDEN=1 DEMO_NO_DOCKER=1 DEMO_BASE_URL=http://localhost:8080 make demo-smoke
+```
+
 Excerpt:
 
 ```
