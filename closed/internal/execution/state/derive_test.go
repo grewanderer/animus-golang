@@ -1,6 +1,7 @@
 package state
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/animus-labs/animus-go/closed/internal/domain"
@@ -8,122 +9,116 @@ import (
 )
 
 func TestDeriveRunState(t *testing.T) {
-	plan := &domain.ExecutionPlan{
-		RunID:     "run-1",
-		ProjectID: "proj-1",
-		Steps: []domain.ExecutionPlanStep{
-			{Name: "a"},
-			{Name: "b"},
-		},
-		Edges: []domain.ExecutionPlanEdge{
-			{From: "a", To: "b"},
-		},
-	}
+	expectedSteps := []string{"a", "b"}
 
 	tests := []struct {
-		name       string
-		plan       *domain.ExecutionPlan
-		executions []repo.StepExecutionRecord
-		want       domain.RunState
+		name         string
+		planExists   bool
+		expected     []string
+		executions   []repo.StepExecutionRecord
+		wantRunState domain.RunState
 	}{
 		{
-			name: "no plan",
-			plan: nil,
-			want: domain.RunStateCreated,
+			name:         "no plan",
+			planExists:   false,
+			expected:     expectedSteps,
+			executions:   []repo.StepExecutionRecord{stepRecord("a", 1, "Succeeded")},
+			wantRunState: domain.RunStateCreated,
 		},
 		{
-			name: "plan no executions",
-			plan: plan,
-			want: domain.RunStatePlanned,
+			name:         "plan no executions",
+			planExists:   true,
+			expected:     expectedSteps,
+			wantRunState: domain.RunStatePlanned,
 		},
 		{
-			name: "all succeeded",
-			plan: plan,
+			name:       "partial execution",
+			planExists: true,
+			expected:   expectedSteps,
+			executions: []repo.StepExecutionRecord{
+				stepRecord("a", 1, "Succeeded"),
+			},
+			wantRunState: domain.RunStateDryRunRunning,
+		},
+		{
+			name:       "all succeeded",
+			planExists: true,
+			expected:   expectedSteps,
 			executions: []repo.StepExecutionRecord{
 				stepRecord("a", 1, "Succeeded"),
 				stepRecord("b", 1, "Succeeded"),
 			},
-			want: domain.RunStateDryRunSucceeded,
+			wantRunState: domain.RunStateDryRunSucceeded,
 		},
 		{
-			name: "failed step",
-			plan: plan,
+			name:       "failed step",
+			planExists: true,
+			expected:   expectedSteps,
 			executions: []repo.StepExecutionRecord{
 				stepRecord("a", 1, "Failed"),
 			},
-			want: domain.RunStateDryRunFailed,
+			wantRunState: domain.RunStateDryRunFailed,
 		},
 		{
-			name: "skipped without failed ancestor",
-			plan: plan,
-			executions: []repo.StepExecutionRecord{
-				stepRecord("a", 1, "Succeeded"),
-				stepRecord("b", 1, "Skipped"),
-			},
-			want: domain.RunStateDryRunFailed,
-		},
-		{
-			name: "skipped with failed ancestor",
-			plan: plan,
+			name:       "skipped after failure",
+			planExists: true,
+			expected:   expectedSteps,
 			executions: []repo.StepExecutionRecord{
 				stepRecord("a", 1, "Failed"),
 				stepRecord("b", 1, "Skipped"),
 			},
-			want: domain.RunStateDryRunFailed,
-		},
-		{
-			name: "partial execution",
-			plan: plan,
-			executions: []repo.StepExecutionRecord{
-				stepRecord("a", 1, "Retried"),
-			},
-			want: domain.RunStateDryRunRunning,
+			wantRunState: domain.RunStateDryRunFailed,
 		},
 	}
 
 	for _, tc := range tests {
-		if got := DeriveRunState(tc.plan, tc.executions); got != tc.want {
-			t.Fatalf("%s: expected %s got %s", tc.name, tc.want, got)
+		outcomes, _ := DeriveStepOutcomes(tc.executions, tc.expected)
+		if got := DeriveRunState(tc.planExists, outcomes, tc.expected); got != tc.wantRunState {
+			t.Fatalf("%s: expected %s got %s", tc.name, tc.wantRunState, got)
 		}
 	}
 }
 
-func TestDeriveStepOutcome(t *testing.T) {
-	tests := []struct {
-		name         string
-		records      []repo.StepExecutionRecord
-		wantAttempts int
-		wantStatus   domain.StepState
-	}{
-		{
-			name:         "no attempts",
-			wantAttempts: 0,
-			wantStatus:   "",
-		},
-		{
-			name: "succeeded",
-			records: []repo.StepExecutionRecord{
-				stepRecord("a", 1, "Succeeded"),
-			},
-			wantAttempts: 1,
-			wantStatus:   domain.StepStateSucceeded,
-		},
-		{
-			name: "failed after retry",
-			records: []repo.StepExecutionRecord{
-				stepRecord("a", 1, "Retried"),
-				stepRecord("a", 2, "Failed"),
-			},
-			wantAttempts: 2,
-			wantStatus:   domain.StepStateFailed,
-		},
+func TestDeriveStepOutcomesAttempts(t *testing.T) {
+	execs := []repo.StepExecutionRecord{
+		stepRecord("a", 1, "Retried"),
+		stepRecord("a", 2, "Failed"),
 	}
+	outcomes, attempts := DeriveStepOutcomes(execs, []string{"a"})
+	if attempts["a"] != 2 {
+		t.Fatalf("expected attempts 2, got %d", attempts["a"])
+	}
+	if outcomes["a"] != domain.StepOutcomeFailed {
+		t.Fatalf("expected failed outcome, got %s", outcomes["a"])
+	}
+}
 
-	for _, tc := range tests {
-		attempts, status := DeriveStepOutcome(tc.records)
-		if attempts != tc.wantAttempts || status != tc.wantStatus {
-			t.Fatalf("%s: expected %d/%s got %d/%s", tc.name, tc.wantAttempts, tc.wantStatus, attempts, status)
-		}
+func TestDeriveRunStateOrderIndependent(t *testing.T) {
+	expectedSteps := []string{"a", "b"}
+	execs := []repo.StepExecutionRecord{
+		stepRecord("a", 1, "Retried"),
+		stepRecord("b", 1, "Succeeded"),
+		stepRecord("a", 2, "Succeeded"),
+	}
+	outcomesA, attemptsA := DeriveStepOutcomes(execs, expectedSteps)
+	stateA := DeriveRunState(true, outcomesA, expectedSteps)
+
+	reversed := []repo.StepExecutionRecord{
+		execs[2],
+		execs[1],
+		execs[0],
+	}
+	outcomesB, attemptsB := DeriveStepOutcomes(reversed, expectedSteps)
+	stateB := DeriveRunState(true, outcomesB, expectedSteps)
+
+	if stateA != stateB {
+		t.Fatalf("expected same state, got %s vs %s", stateA, stateB)
+	}
+	if !reflect.DeepEqual(outcomesA, outcomesB) {
+		t.Fatalf("expected same outcomes, got %+v vs %+v", outcomesA, outcomesB)
+	}
+	if !reflect.DeepEqual(attemptsA, attemptsB) {
+		t.Fatalf("expected same attempts, got %+v vs %+v", attemptsA, attemptsB)
 	}
 }
 

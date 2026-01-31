@@ -74,7 +74,9 @@ func (s *Service) Derive(ctx context.Context, projectID, runID string) (repo.Run
 	if err != nil {
 		return repo.RunRecord{}, "", err
 	}
-	derived := state.DeriveRunState(planSpec, stepExecutions)
+	expectedSteps := planStepNames(planSpec)
+	outcomes, _ := state.DeriveStepOutcomes(stepExecutions, expectedSteps)
+	derived := state.DeriveRunState(planSpec != nil, outcomes, expectedSteps)
 	return runRecord, derived, nil
 }
 
@@ -92,7 +94,9 @@ func (s *Service) deriveAndPersist(ctx context.Context, projectID, runID string)
 	if err != nil {
 		return repo.RunRecord{}, "", "", false, err
 	}
-	derived := state.DeriveRunState(planSpec, stepExecutions)
+	expectedSteps := planStepNames(planSpec)
+	outcomes, _ := state.DeriveStepOutcomes(stepExecutions, expectedSteps)
+	derived := state.DeriveRunState(planSpec != nil, outcomes, expectedSteps)
 	prev, applied, err := s.runs.UpdateDerivedStatus(ctx, projectID, runID, derived)
 	if err != nil {
 		return repo.RunRecord{}, "", "", false, err
@@ -238,4 +242,19 @@ func transitionIdempotencyKey(projectID, runID string, from, to domain.RunState)
 		string(from),
 		string(to),
 	}, ":")
+}
+
+func planStepNames(plan *domain.ExecutionPlan) []string {
+	if plan == nil || len(plan.Steps) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(plan.Steps))
+	for _, step := range plan.Steps {
+		name := strings.TrimSpace(step.Name)
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
 }

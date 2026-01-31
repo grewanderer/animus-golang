@@ -7,141 +7,131 @@ import (
 	"github.com/animus-labs/animus-go/closed/internal/repo"
 )
 
-// DeriveRunState computes the deterministic run state from plan and step executions.
-func DeriveRunState(plan *domain.ExecutionPlan, executions []repo.StepExecutionRecord) domain.RunState {
-	if plan == nil {
+// DeriveRunState computes the run state from plan presence, step outcomes, and expected steps.
+func DeriveRunState(planExists bool, stepOutcomes map[string]domain.StepOutcome, expectedSteps []string) domain.RunState {
+	if !planExists {
+		// TODO: treat step executions without a plan as inconsistent; derived state stays Created.
 		return domain.RunStateCreated
 	}
-	if len(plan.Steps) == 0 {
+	if len(expectedSteps) == 0 {
 		return domain.RunStatePlanned
 	}
-	if len(executions) == 0 {
+	if len(stepOutcomes) == 0 {
 		return domain.RunStatePlanned
 	}
 
-	byStep := groupByStep(executions)
-	failedSteps := map[string]struct{}{}
-	skippedSteps := map[string]struct{}{}
 	incomplete := false
-
-	for _, step := range plan.Steps {
-		stepName := strings.TrimSpace(step.Name)
+	for _, step := range expectedSteps {
+		stepName := strings.TrimSpace(step)
 		if stepName == "" {
 			continue
 		}
-		attempts, status := DeriveStepOutcome(byStep[stepName])
-		if attempts == 0 || status == "" {
+		outcome, ok := stepOutcomes[stepName]
+		if !ok || outcome == "" {
 			incomplete = true
 			continue
 		}
-		switch status {
-		case domain.StepStateFailed:
-			failedSteps[stepName] = struct{}{}
-		case domain.StepStateSkipped:
-			skippedSteps[stepName] = struct{}{}
-		}
-	}
-
-	if len(failedSteps) > 0 {
-		return domain.RunStateDryRunFailed
-	}
-	if incomplete {
-		return domain.RunStateDryRunRunning
-	}
-
-	if len(skippedSteps) > 0 {
-		if !skipsHaveFailedAncestor(plan, failedSteps, skippedSteps) {
+		if outcome == domain.StepOutcomeFailed {
 			return domain.RunStateDryRunFailed
 		}
+	}
+
+	if incomplete {
+		return domain.RunStateDryRunRunning
 	}
 	return domain.RunStateDryRunSucceeded
 }
 
-// DeriveStepOutcome returns attempts count and terminal status (empty if not terminal).
-func DeriveStepOutcome(executions []repo.StepExecutionRecord) (int, domain.StepState) {
-	if len(executions) == 0 {
-		return 0, ""
-	}
-	maxAttempt := 0
-	finalStatus := ""
-	for _, record := range executions {
-		if record.Attempt > maxAttempt {
-			maxAttempt = record.Attempt
-			finalStatus = record.Status
+// DeriveStepOutcomes returns terminal outcomes and attempt counts per step.
+func DeriveStepOutcomes(executions []repo.StepExecutionRecord, expectedSteps []string) (map[string]domain.StepOutcome, map[string]int) {
+	outcomes := make(map[string]domain.StepOutcome)
+	attempts := make(map[string]int)
+	expected := map[string]struct{}{}
+	if len(expectedSteps) > 0 {
+		for _, step := range expectedSteps {
+			name := strings.TrimSpace(step)
+			if name == "" {
+				continue
+			}
+			expected[name] = struct{}{}
 		}
 	}
-	if maxAttempt == 0 {
-		return 0, ""
-	}
-	if state, ok := mapStepStatus(finalStatus); ok {
-		return maxAttempt, state
-	}
-	return maxAttempt, ""
-}
 
-func mapStepStatus(status string) (domain.StepState, bool) {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "succeeded":
-		return domain.StepStateSucceeded, true
-	case "failed":
-		return domain.StepStateFailed, true
-	case "skipped":
-		return domain.StepStateSkipped, true
-	default:
-		return "", false
+	type agg struct {
+		maxAttempt int
+		outcome    domain.StepOutcome
 	}
-}
-
-func groupByStep(executions []repo.StepExecutionRecord) map[string][]repo.StepExecutionRecord {
-	out := make(map[string][]repo.StepExecutionRecord)
+	state := make(map[string]*agg)
 	for _, record := range executions {
 		step := strings.TrimSpace(record.StepName)
 		if step == "" {
 			continue
 		}
-		out[step] = append(out[step], record)
+		if len(expected) > 0 {
+			if _, ok := expected[step]; !ok {
+				continue
+			}
+		}
+		aggState := state[step]
+		if aggState == nil {
+			aggState = &agg{}
+			state[step] = aggState
+		}
+		if record.Attempt > aggState.maxAttempt {
+			aggState.maxAttempt = record.Attempt
+			aggState.outcome = ""
+		}
+		if record.Attempt == aggState.maxAttempt {
+			if outcome, ok := mapOutcome(record.Status); ok {
+				aggState.outcome = outcome
+			}
+		}
 	}
-	return out
+
+	for step, aggState := range state {
+		if aggState.maxAttempt > 0 {
+			attempts[step] = aggState.maxAttempt
+		}
+		if aggState.outcome != "" {
+			outcomes[step] = aggState.outcome
+		}
+	}
+	return outcomes, attempts
 }
 
-func skipsHaveFailedAncestor(plan *domain.ExecutionPlan, failedSteps, skippedSteps map[string]struct{}) bool {
-	if len(skippedSteps) == 0 {
-		return true
+// DeriveStepOutcome returns attempts count and terminal outcome for a single step.
+func DeriveStepOutcome(executions []repo.StepExecutionRecord) (int, domain.StepOutcome) {
+	if len(executions) == 0 {
+		return 0, ""
 	}
-	deps := reverseDependencies(plan.Edges)
-	for step := range skippedSteps {
-		if !hasFailedAncestor(step, deps, failedSteps, map[string]struct{}{}) {
-			return false
+	maxAttempt := 0
+	var outcome domain.StepOutcome
+	for _, record := range executions {
+		if record.Attempt > maxAttempt {
+			maxAttempt = record.Attempt
+			outcome = ""
+		}
+		if record.Attempt == maxAttempt {
+			if mapped, ok := mapOutcome(record.Status); ok {
+				outcome = mapped
+			}
 		}
 	}
-	return true
+	if maxAttempt == 0 {
+		return 0, ""
+	}
+	return maxAttempt, outcome
 }
 
-func reverseDependencies(edges []domain.ExecutionPlanEdge) map[string][]string {
-	out := make(map[string][]string)
-	for _, edge := range edges {
-		from := strings.TrimSpace(edge.From)
-		to := strings.TrimSpace(edge.To)
-		if from == "" || to == "" {
-			continue
-		}
-		out[to] = append(out[to], from)
+func mapOutcome(status string) (domain.StepOutcome, bool) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "succeeded":
+		return domain.StepOutcomeSucceeded, true
+	case "failed":
+		return domain.StepOutcomeFailed, true
+	case "skipped":
+		return domain.StepOutcomeSkipped, true
+	default:
+		return "", false
 	}
-	return out
-}
-
-func hasFailedAncestor(step string, deps map[string][]string, failedSteps map[string]struct{}, visited map[string]struct{}) bool {
-	if _, ok := visited[step]; ok {
-		return false
-	}
-	visited[step] = struct{}{}
-	for _, parent := range deps[step] {
-		if _, ok := failedSteps[parent]; ok {
-			return true
-		}
-		if hasFailedAncestor(parent, deps, failedSteps, visited) {
-			return true
-		}
-	}
-	return false
 }
