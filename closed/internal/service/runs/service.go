@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/animus-labs/animus-go/closed/internal/domain"
 	"github.com/animus-labs/animus-go/closed/internal/execution/plan"
@@ -78,73 +79,67 @@ func (s *Service) Derive(ctx context.Context, projectID, runID string) (repo.Run
 }
 
 // deriveAndPersist computes the derived run state and persists it.
-func (s *Service) deriveAndPersist(ctx context.Context, projectID, runID string) (repo.RunRecord, domain.RunState, domain.RunState, error) {
+func (s *Service) deriveAndPersist(ctx context.Context, projectID, runID string) (repo.RunRecord, domain.RunState, domain.RunState, bool, error) {
 	runRecord, err := s.runs.GetRun(ctx, projectID, runID)
 	if err != nil {
-		return repo.RunRecord{}, "", "", err
-	}
-	prev := domain.NormalizeRunState(runRecord.Status)
-	if prev == "" {
-		prev = domain.RunStateCreated
+		return repo.RunRecord{}, "", "", false, err
 	}
 	planSpec, err := s.loadPlan(ctx, projectID, runID)
 	if err != nil {
-		return repo.RunRecord{}, "", "", err
+		return repo.RunRecord{}, "", "", false, err
 	}
 	stepExecutions, err := s.steps.ListByRun(ctx, projectID, runID)
 	if err != nil {
-		return repo.RunRecord{}, "", "", err
+		return repo.RunRecord{}, "", "", false, err
 	}
 	derived := state.DeriveRunState(planSpec, stepExecutions)
-	if err := s.runs.UpdateDerivedStatus(ctx, projectID, runID, derived); err != nil {
-		return repo.RunRecord{}, "", "", err
+	prev, applied, err := s.runs.UpdateDerivedStatus(ctx, projectID, runID, derived)
+	if err != nil {
+		return repo.RunRecord{}, "", "", false, err
 	}
-	return runRecord, prev, derived, nil
+	return runRecord, prev, derived, applied, nil
 }
 
 // DeriveAndPersistWithAudit computes and persists derived state, then emits a run-level audit event.
 func (s *Service) DeriveAndPersistWithAudit(ctx context.Context, appender AuditAppender, info AuditInfo, projectID, runID, specHash string) (repo.RunRecord, domain.RunState, domain.RunState, error) {
-	runRecord, prev, derived, err := s.deriveAndPersist(ctx, projectID, runID)
+	runRecord, prev, derived, applied, err := s.deriveAndPersist(ctx, projectID, runID)
 	if err != nil {
 		return repo.RunRecord{}, "", "", err
 	}
-	if err := s.AppendRunTransitionAudit(ctx, appender, info, projectID, runID, specHash, prev, derived); err != nil {
-		return repo.RunRecord{}, "", "", err
+	if applied {
+		if err := s.AppendRunTransitionAudit(ctx, appender, info, projectID, runID, specHash, prev, derived); err != nil {
+			return repo.RunRecord{}, "", "", err
+		}
 	}
 	return runRecord, prev, derived, nil
 }
 
 // markDryRunRunning transitions a run to dryrun_running after verifying a plan exists.
-func (s *Service) markDryRunRunning(ctx context.Context, projectID, runID string) (domain.RunState, error) {
-	runRecord, err := s.runs.GetRun(ctx, projectID, runID)
-	if err != nil {
-		return "", err
-	}
-	prev := domain.NormalizeRunState(runRecord.Status)
-	if prev == "" {
-		prev = domain.RunStateCreated
-	}
+func (s *Service) markDryRunRunning(ctx context.Context, projectID, runID string) (domain.RunState, bool, error) {
 	planSpec, err := s.loadPlan(ctx, projectID, runID)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if planSpec == nil {
-		return "", errors.New("plan required for dry-run")
+		return "", false, errors.New("plan required for dry-run")
 	}
-	if err := s.runs.UpdateDerivedStatus(ctx, projectID, runID, domain.RunStateDryRunRunning); err != nil {
-		return "", err
+	prev, applied, err := s.runs.UpdateDerivedStatus(ctx, projectID, runID, domain.RunStateDryRunRunning)
+	if err != nil {
+		return "", false, err
 	}
-	return prev, nil
+	return prev, applied, nil
 }
 
 // MarkDryRunRunningWithAudit transitions to dryrun_running and emits a run-level audit event.
 func (s *Service) MarkDryRunRunningWithAudit(ctx context.Context, appender AuditAppender, info AuditInfo, projectID, runID, specHash string) (domain.RunState, error) {
-	prev, err := s.markDryRunRunning(ctx, projectID, runID)
+	prev, applied, err := s.markDryRunRunning(ctx, projectID, runID)
 	if err != nil {
 		return "", err
 	}
-	if err := s.AppendRunTransitionAudit(ctx, appender, info, projectID, runID, specHash, prev, domain.RunStateDryRunRunning); err != nil {
-		return "", err
+	if applied {
+		if err := s.AppendRunTransitionAudit(ctx, appender, info, projectID, runID, specHash, prev, domain.RunStateDryRunRunning); err != nil {
+			return "", err
+		}
 	}
 	return prev, nil
 }
@@ -174,21 +169,33 @@ func BuildRunTransitionEvent(info AuditInfo, projectID, runID, specHash string, 
 	if action == "" {
 		return nil, false, nil
 	}
+	occurredAt := time.Now().UTC()
+	idempotencyKey := transitionIdempotencyKey(projectID, runID, from, to)
+	requestID := strings.TrimSpace(info.RequestID)
+	if requestID == "" {
+		requestID = idempotencyKey
+	}
 	event := auditlog.Event{
+		OccurredAt:   occurredAt,
 		Actor:        info.Actor,
 		Action:       action,
 		ResourceType: "run",
 		ResourceID:   runID,
-		RequestID:    info.RequestID,
+		RequestID:    requestID,
 		IP:           info.IP,
 		UserAgent:    info.UserAgent,
 		Payload: map[string]any{
-			"service":    strings.TrimSpace(info.Service),
-			"project_id": projectID,
-			"run_id":     runID,
-			"spec_hash":  specHash,
-			"from":       string(from),
-			"to":         string(to),
+			"service":         strings.TrimSpace(info.Service),
+			"project_id":      projectID,
+			"run_id":          runID,
+			"spec_hash":       specHash,
+			"from":            string(from),
+			"to":              string(to),
+			"transition":      string(from) + "->" + string(to),
+			"actor":           strings.TrimSpace(info.Actor),
+			"occurred_at":     occurredAt,
+			"request_id":      requestID,
+			"idempotency_key": idempotencyKey,
 		},
 	}
 	return &event, true, nil
@@ -222,4 +229,13 @@ func transitionAction(to domain.RunState) string {
 	default:
 		return ""
 	}
+}
+
+func transitionIdempotencyKey(projectID, runID string, from, to domain.RunState) string {
+	return strings.Join([]string{
+		strings.TrimSpace(projectID),
+		strings.TrimSpace(runID),
+		string(from),
+		string(to),
+	}, ":")
 }

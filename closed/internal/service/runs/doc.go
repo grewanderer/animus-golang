@@ -11,4 +11,10 @@
 // Auditing:
 //   - Successful transitions emit exactly one run-level audit event.
 //   - Rejected transitions do not emit audit events (callers should handle errors).
+//
+// Concurrency & idempotency:
+//   - Transitions are applied under a run-row lock when executed inside a DB transaction.
+//   - Re-applying the same transition is a no-op and does not emit duplicate audits.
+//   - The service derives a stable idempotency key from (project_id, run_id, from, to),
+//     and uses the request ID when present for correlation.
 package runs

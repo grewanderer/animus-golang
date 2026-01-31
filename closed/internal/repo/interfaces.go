@@ -2,10 +2,13 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/animus-labs/animus-go/closed/internal/domain"
 )
+
+var ErrInvalidTransition = errors.New("invalid run state transition")
 
 type ProjectFilter struct {
 	Name      string
@@ -102,7 +105,7 @@ type DatasetRepository interface {
 type RunRepository interface {
 	CreateRun(ctx context.Context, projectID, idempotencyKey string, pipelineSpecJSON, runSpecJSON []byte, specHash string) (RunRecord, bool, error)
 	GetRun(ctx context.Context, projectID, id string) (RunRecord, error)
-	UpdateDerivedStatus(ctx context.Context, projectID, runID string, status domain.RunState) error
+	UpdateDerivedStatus(ctx context.Context, projectID, runID string, status domain.RunState) (domain.RunState, bool, error)
 }
 
 // ArtifactRepository manages project-scoped artifacts.

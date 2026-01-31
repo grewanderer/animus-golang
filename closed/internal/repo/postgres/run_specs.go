@@ -42,6 +42,11 @@ const (
 	 FROM runs
 	 WHERE project_id = $1 AND run_id = $2`
 
+	selectRunStatusForUpdateQuery = `SELECT status
+	 FROM runs
+	 WHERE project_id = $1 AND run_id = $2
+	 FOR UPDATE`
+
 	updateRunStatusQuery = `UPDATE runs SET status = $1 WHERE project_id = $2 AND run_id = $3`
 )
 
@@ -128,43 +133,46 @@ func (s *RunSpecStore) GetRun(ctx context.Context, projectID, id string) (repo.R
 	return record, nil
 }
 
-func (s *RunSpecStore) UpdateDerivedStatus(ctx context.Context, projectID, runID string, status domain.RunState) error {
+func (s *RunSpecStore) UpdateDerivedStatus(ctx context.Context, projectID, runID string, status domain.RunState) (domain.RunState, bool, error) {
 	if s == nil || s.db == nil {
-		return fmt.Errorf("run spec store not initialized")
+		return "", false, fmt.Errorf("run spec store not initialized")
 	}
 	projectID = strings.TrimSpace(projectID)
 	runID = strings.TrimSpace(runID)
 	if projectID == "" {
-		return fmt.Errorf("project id is required")
+		return "", false, fmt.Errorf("project id is required")
 	}
 	if runID == "" {
-		return fmt.Errorf("run id is required")
+		return "", false, fmt.Errorf("run id is required")
 	}
 	next := domain.NormalizeRunState(string(status))
 	if next == "" {
-		return fmt.Errorf("status is required")
+		return "", false, fmt.Errorf("status is required")
 	}
 
 	var currentRaw string
-	row := s.db.QueryRowContext(ctx, selectRunStatusQuery, projectID, runID)
+	row := s.db.QueryRowContext(ctx, selectRunStatusForUpdateQuery, projectID, runID)
 	if err := row.Scan(&currentRaw); err != nil {
-		return handleNotFound(err)
+		return "", false, handleNotFound(err)
 	}
 	current := domain.NormalizeRunState(currentRaw)
 	if current == "" {
 		current = domain.RunStateCreated
 	}
 	if current == next {
-		return nil
+		return current, false, nil
 	}
 	if !domain.CanTransitionRunState(current, next) {
-		return fmt.Errorf("invalid status transition from %s to %s", current, next)
+		return current, false, repo.ErrInvalidTransition
 	}
-	_, err := s.db.ExecContext(ctx, updateRunStatusQuery, string(next), projectID, runID)
+	res, err := s.db.ExecContext(ctx, updateRunStatusQuery, string(next), projectID, runID)
 	if err != nil {
-		return fmt.Errorf("update run status: %w", err)
+		return current, false, fmt.Errorf("update run status: %w", err)
 	}
-	return nil
+	if rows, err := res.RowsAffected(); err == nil && rows == 0 {
+		return current, false, repo.ErrNotFound
+	}
+	return current, true, nil
 }
 
 func (s *RunSpecStore) GetRunByIdempotencyKey(ctx context.Context, projectID, idempotencyKey string) (repo.RunRecord, error) {
