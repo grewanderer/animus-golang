@@ -46,7 +46,7 @@ Control Plane:
 
 - metadata and state management;
 - orchestration and execution contracts;
-- policy enforcement and audit.
+- policy enforcement and audit;
 
 Control Plane never executes user code.
 
