@@ -1,117 +1,56 @@
 ![Animus Datalab](docs/assets/animus-banner.png)
 
-Deployment: On-prem / Private cloud / Air-gapped
+Animus Datalab is an enterprise digital laboratory for machine learning that organizes the full ML development lifecycle in a managed, reproducible form within a single operational context with common execution, security, and audit rules.
 
-Animus Datalab is an enterprise ML platform with a strict separation of Control Plane and Data Plane, designed for reproducible and auditable ML development in regulated environments.
+## Scope of this repository
 
-The normative technical specification is maintained under `docs/enterprise/` and is the authoritative source of system invariants, constraints, and acceptance criteria.
+- `docs/enterprise/` contains the normative specification for Animus Datalab.
+- The normative specification defines system invariants, constraints, responsibilities, and acceptance criteria for Animus Datalab.
+- The specification describes the target production-grade state and is not tied to a specific implementation release.
+- The specification applies to on-premise, private cloud, and air-gapped deployments.
+
+## System invariants
+
+- Control Plane does not execute user code.
+- A production-run is uniquely defined by DatasetVersion, CodeRef commit SHA, and EnvironmentLock.
+- All significant actions are recorded as AuditEvent.
+- DatasetVersion, CodeRef commit SHA, EnvironmentLock, and Artifact are explicit entities recorded by the system.
+- The system has no hidden state that affects execution results.
+- All domain entities belong to exactly one Project; cross-Project dependencies are prohibited.
+
+## Architectural model
+
+Animus separates Control Plane and Data Plane responsibilities. Control Plane manages governance, policies, metadata, orchestration, and AuditEvent generation and does not execute user code. Data Plane executes user code in isolated, containerized environments and provides controlled access to DatasetVersion and Artifact. Trust boundaries treat user clients as untrusted, Control Plane as trusted management, Data Plane as partially trusted execution, and external systems as separate zones integrated through contractual interfaces.
+
+## Domain model (summary)
+
+- Project is the isolation boundary and root container for DatasetVersion, Run, Artifact, ModelVersion, and AuditEvent.
+- Run references DatasetVersion, CodeRef, and EnvironmentLock and produces Artifact.
+- ModelVersion references a source Run and an Artifact.
+- AuditEvent is append-only and spans the entity graph as the time dimension.
+
+## Execution and reproducibility
+
+Run is the minimal unit of execution and reproducibility. A Run is defined by Project, DatasetVersion, CodeRef commit SHA, EnvironmentLock, execution parameters, and execution policy. Reproducibility is the ability to re-execute a Run and obtain results consistent with the recorded inputs, policies, and execution environment; determinism is not assumed when bindings are missing or user code introduces non-determinism. Control Plane stores an immutable execution snapshot for each Run; replay creates a new Run from that snapshot and records the linkage. A production-run is accepted only when CodeRef commit SHA, EnvironmentLock, DatasetVersion references, and required policy approvals are explicit and recorded; otherwise the Run is rejected or limitations are recorded in Run metadata and AuditEvent.
+
+## Security model (by design)
+
+- Authentication uses SSO via OIDC and/or SAML, with session TTL enforcement, forced logout, and limits on parallel sessions.
+- Authorization is Project-scoped with default deny; object-level constraints are enforced; service accounts are subject to the same RBAC and are audited.
+- Secrets are supplied via an external secret store, are temporary and minimal in scope, are not exposed in UI, logs, metrics, or Artifact, and access attempts are recorded in AuditEvent.
+- AuditEvent is append-only and cannot be disabled; audit export supports SIEM and monitoring integrations.
+- Data Plane executes untrusted user code in containerized environments with restricted privileges; network access and resource limits are enforced by policy; Control Plane never executes user code.
+
+## Explicit non-goals
+
+- Built-in Git hosting or full IDE replacement.
+- A full inference platform (export to external systems is supported).
+- A standalone Feature Store product (interfaces may be integrated).
 
 ## Documentation
 
-Start here:
+The authoritative specification is in `docs/enterprise/`. This README is an entry point and is not the normative source.
 
-- [`docs/README.md`](docs/README.md)
+## Status
 
-Enterprise specification (normative):
-
-- [`docs/_generated/structure_outline.md`](docs/_generated/structure_outline.md) (specification index)
-- [`docs/enterprise/00-introduction-and-scope.md`](docs/enterprise/00-introduction-and-scope.md)
-- [`docs/enterprise/01-system-definition-and-goals.md`](docs/enterprise/01-system-definition-and-goals.md)
-- [`docs/enterprise/02-conceptual-model.md`](docs/enterprise/02-conceptual-model.md)
-- [`docs/enterprise/03-architectural-model.md`](docs/enterprise/03-architectural-model.md)
-- [`docs/enterprise/03-interfaces-and-contracts.md`](docs/enterprise/03-interfaces-and-contracts.md)
-- [`docs/enterprise/03-architecture-decision-records.md`](docs/enterprise/03-architecture-decision-records.md)
-- [`docs/enterprise/04-domain-model.md`](docs/enterprise/04-domain-model.md)
-- [`docs/enterprise/05-execution-model.md`](docs/enterprise/05-execution-model.md)
-- [`docs/enterprise/06-reproducibility-and-determinism.md`](docs/enterprise/06-reproducibility-and-determinism.md)
-- [`docs/enterprise/07-developer-environment.md`](docs/enterprise/07-developer-environment.md)
-- [`docs/enterprise/08-security-model.md`](docs/enterprise/08-security-model.md)
-- [`docs/enterprise/08-rbac-matrix.md`](docs/enterprise/08-rbac-matrix.md)
-- [`docs/enterprise/09-operations-and-reliability.md`](docs/enterprise/09-operations-and-reliability.md)
-- [`docs/enterprise/09-operational-runbooks.md`](docs/enterprise/09-operational-runbooks.md)
-- [`docs/enterprise/10-versioning-and-compatibility.md`](docs/enterprise/10-versioning-and-compatibility.md)
-- [`docs/enterprise/11-risk-and-threat-model.md`](docs/enterprise/11-risk-and-threat-model.md)
-- [`docs/enterprise/12-acceptance-criteria.md`](docs/enterprise/12-acceptance-criteria.md)
-- [`docs/enterprise/13-non-goals-and-exclusions.md`](docs/enterprise/13-non-goals-and-exclusions.md)
-- [`docs/enterprise/14-glossary.md`](docs/enterprise/14-glossary.md)
-
-Open integration documentation (DataPilot integration layer):
-
-- [`docs/open/open-integration-index.md`](docs/open/open-integration-index.md)
-- [`docs/open/open-integration.md`](docs/open/open-integration.md)
-
-## Architecture summary
-
-Control Plane:
-
-- metadata and state management;
-- orchestration and execution contracts;
-- policy enforcement and audit;
-
-Control Plane never executes user code.
-
-Data Plane:
-
-- pipeline execution;
-- data processing and model training;
-- Artifact generation.
-
-Execution is containerized and isolated. Kubernetes is the target runtime.
-
-See: [`docs/enterprise/03-architectural-model.md`](docs/enterprise/03-architectural-model.md)
-
-## Demo
-
-This repository includes an open demo that demonstrates Control Plane behavior.
-
-> The demo is not a hosted service and does not include a production Data Plane.
-
-### Requirements
-
-- Go 1.22+
-- Docker
-- Docker Compose
-- `curl` (preferred) or `python3`
-
-### Run the demo
-
-```bash
-make demo
-```
-
-### Smoke test
-
-```bash
-make demo-smoke
-```
-
-Stop with `Ctrl+C`. For cleanup: `make demo-down`.
-
-## Repository structure
-
-```
-.
-- open/            # Schemas, SDKs, demo runner
-- closed/          # Control Plane services, migrations, UI, deployment assets
-- api/             # Execution and API schemas
-- docs/            # Documentation index and content
-- docs/enterprise/ # Normative specification
-- docs/open/       # Open integration docs
-- docs/_generated/ # Generated documentation artifacts
-```
-
-## Security
-
-Animus is designed for regulated and security-sensitive environments:
-
-- SSO (OIDC / SAML)
-- Project-scoped RBAC
-- secret isolation
-- execution sandboxing
-- full audit trail
-
-For vulnerability reporting and coordinated disclosure, see [docs/SECURITY.md](docs/SECURITY.md).
-
-## License
-
-See [LICENSE](LICENSE) for details.
+The specification describes the target state and is not tied to a specific implementation release. Animus Datalab is production-grade only when all mandatory acceptance criteria are satisfied and verified on a working installation with security and audit policies enabled.
