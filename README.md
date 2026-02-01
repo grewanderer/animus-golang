@@ -1,137 +1,77 @@
-![Animus — Enterprise ML Control Plane](docs/assets/animus-banner.png)
+![Animus Datalab](docs/assets/animus-banner.png)
 
-**Website:** — [kappaka.org](https://kapakka.org/en)
-**Documentation:** `docs/`
-**Deployment:** On-prem / Private cloud / Air-gapped
+Deployment: On-prem / Private cloud / Air-gapped
 
----
+Animus Datalab is an enterprise ML platform with a strict separation of Control Plane and Data Plane, designed for reproducible and auditable ML development in regulated environments.
 
-## Animus
+The normative technical specification is maintained under `docs/enterprise/` and is the authoritative source of system invariants, constraints, and acceptance criteria.
 
-Animus is an **enterprise ML control plane** for building, executing, and governing machine-learning workflows in a deterministic and auditable way.
+## Documentation
 
-Animus is designed for organizations that run ML **inside their own infrastructure** and require explicit control over data, execution, lineage, and decisions — without relying on hosted SaaS platforms or opaque automation.
+Start here:
 
-Rather than acting as a training runtime or notebook environment, Animus serves as the **system of record and coordination layer** for ML development.
+- [`docs/README.md`](docs/README.md)
 
----
+Enterprise specification (normative):
 
-## What Animus Solves
+- [`docs/_generated/structure_outline.md`](docs/_generated/structure_outline.md) (specification index)
+- [`docs/enterprise/00-introduction-and-scope.md`](docs/enterprise/00-introduction-and-scope.md)
+- [`docs/enterprise/01-system-definition-and-goals.md`](docs/enterprise/01-system-definition-and-goals.md)
+- [`docs/enterprise/02-conceptual-model.md`](docs/enterprise/02-conceptual-model.md)
+- [`docs/enterprise/03-architectural-model.md`](docs/enterprise/03-architectural-model.md)
+- [`docs/enterprise/03-interfaces-and-contracts.md`](docs/enterprise/03-interfaces-and-contracts.md)
+- [`docs/enterprise/03-architecture-decision-records.md`](docs/enterprise/03-architecture-decision-records.md)
+- [`docs/enterprise/04-domain-model.md`](docs/enterprise/04-domain-model.md)
+- [`docs/enterprise/05-execution-model.md`](docs/enterprise/05-execution-model.md)
+- [`docs/enterprise/06-reproducibility-and-determinism.md`](docs/enterprise/06-reproducibility-and-determinism.md)
+- [`docs/enterprise/07-developer-environment.md`](docs/enterprise/07-developer-environment.md)
+- [`docs/enterprise/08-security-model.md`](docs/enterprise/08-security-model.md)
+- [`docs/enterprise/08-rbac-matrix.md`](docs/enterprise/08-rbac-matrix.md)
+- [`docs/enterprise/09-operations-and-reliability.md`](docs/enterprise/09-operations-and-reliability.md)
+- [`docs/enterprise/09-operational-runbooks.md`](docs/enterprise/09-operational-runbooks.md)
+- [`docs/enterprise/10-versioning-and-compatibility.md`](docs/enterprise/10-versioning-and-compatibility.md)
+- [`docs/enterprise/11-risk-and-threat-model.md`](docs/enterprise/11-risk-and-threat-model.md)
+- [`docs/enterprise/12-acceptance-criteria.md`](docs/enterprise/12-acceptance-criteria.md)
+- [`docs/enterprise/13-non-goals-and-exclusions.md`](docs/enterprise/13-non-goals-and-exclusions.md)
+- [`docs/enterprise/14-glossary.md`](docs/enterprise/14-glossary.md)
 
-In real production environments, ML systems fail not because of models, but because:
+Open integration documentation (DataPilot integration layer):
 
-* datasets change without being noticed;
-* experiments cannot be reproduced months later;
-* pipelines rely on hidden state and ad-hoc scripts;
-* audit evidence is reconstructed manually.
+- [`docs/open/open-integration-index.md`](docs/open/open-integration-index.md)
+- [`docs/open/open-integration.md`](docs/open/open-integration.md)
 
-Animus addresses these problems by making the ML lifecycle **explicit, versioned, and traceable by default**.
+## Architecture summary
 
----
+Control Plane:
 
-## Key Capabilities
+- metadata and state management;
+- orchestration and execution contracts;
+- policy enforcement and audit.
 
-### Deterministic ML Execution
+Control Plane never executes user code.
 
-All experiments are bound to explicit inputs:
+Data Plane:
 
-* immutable dataset versions;
-* declared parameters;
-* code commit identifiers;
-* execution environment hashes.
-
-If a result cannot be reproduced, Animus makes the reason visible.
-
----
-
-### Declarative Pipelines
-
-ML processes are described declaratively as pipelines that define *what* must happen, not *how* it is implemented.
-
-This enables:
-
-* predictable execution;
-* reuse across teams;
-* deterministic planning and dry-run simulation.
-
----
-
-### Lineage and Audit by Design
-
-Animus automatically records:
-
-* dataset provenance and transformations;
-* experiment parameters and outcomes;
-* model approvals and lifecycle transitions;
-* user actions and governance decisions.
-
-All records are append-only and suitable for audit and review.
-
----
-
-### Governance Without Friction
-
-Quality checks, rules, and approval gates are defined declaratively and applied automatically, without requiring manual discipline from developers.
-
-Governance becomes part of the workflow, not an external process.
-
----
-
-## Architecture Overview
-
-Animus is built around a strict separation of concerns.
-
-### Control Plane
-
-The control plane is responsible for:
-
-* metadata and state management;
-* orchestration and execution contracts;
-* lineage, rules, and audit history.
-
-The control plane **never executes user code**.
-
-### Data Plane
-
-The data plane is responsible for:
-
-* pipeline execution;
-* data processing and model training;
-* artifact generation.
+- pipeline execution;
+- data processing and model training;
+- Artifact generation.
 
 Execution is containerized and isolated. Kubernetes is the target runtime.
 
-This separation ensures predictability, security, and operational stability.
+See: [`docs/enterprise/03-architectural-model.md`](docs/enterprise/03-architectural-model.md)
 
-See: `docs/architecture.md`
+## Demo
 
----
+This repository includes an open demo that demonstrates Control Plane behavior.
 
-## Deployment Model
-
-Animus is designed for enterprise environments:
-
-* on-prem or private cloud deployment;
-* support for air-gapped installations;
-* no dependency on public SaaS services;
-* no external data flow by default.
-
-All services run **inside your network perimeter**.
-
----
-
-## Getting Started
-
-This repository includes an **open demo** that demonstrates the behavior of the control plane.
-
-> The demo is not a hosted service and does not include a production data plane.
+> The demo is not a hosted service and does not include a production Data Plane.
 
 ### Requirements
 
-* Go 1.22+
-* Docker
-* Docker Compose
-* `curl` (preferred) or `python3`
+- Go 1.22+
+- Docker
+- Docker Compose
+- `curl` (preferred) or `python3`
 
 ### Run the demo
 
@@ -147,52 +87,31 @@ make demo-smoke
 
 Stop with `Ctrl+C`. For cleanup: `make demo-down`.
 
----
-
-## Repository Structure
+## Repository structure
 
 ```
 .
-├── open/       # Schemas, SDKs, demo runner, open documentation
-├── closed/     # Control plane services, migrations, UI, deployment assets
-├── api/        # Execution and API schemas
-├── docs/       # Architecture, execution model, ADRs
+- open/            # Schemas, SDKs, demo runner
+- closed/          # Control Plane services, migrations, UI, deployment assets
+- api/             # Execution and API schemas
+- docs/            # Documentation index and content
+- docs/enterprise/ # Normative specification
+- docs/open/       # Open integration docs
+- docs/_generated/ # Generated documentation artifacts
 ```
-
----
-
-## Documentation
-
-* `docs/index.md` — documentation entry point
-* `docs/architecture.md` — system architecture
-* `docs/execution.md` — execution and determinism model
-* `docs/pipeline-spec.md` — pipeline specification
-* `docs/adr/` — architectural decision records
-
----
 
 ## Security
 
-Animus is built for regulated and security-sensitive environments:
+Animus is designed for regulated and security-sensitive environments:
 
-* SSO (OIDC / SAML)
-* project-scoped RBAC
-* secret isolation
-* execution sandboxing
-* full audit trail
+- SSO (OIDC / SAML)
+- Project-scoped RBAC
+- secret isolation
+- execution sandboxing
+- full audit trail
 
-For vulnerability reporting and coordinated disclosure, see `SECURITY.md`.
-
----
-
-## Status
-
-Animus is under active development.
-
-This repository contains the **control plane foundation** of the Animus platform.
-
----
+For vulnerability reporting and coordinated disclosure, see [docs/SECURITY.md](docs/SECURITY.md).
 
 ## License
 
-See `LICENSE` for details.
+See [LICENSE](LICENSE) for details.
