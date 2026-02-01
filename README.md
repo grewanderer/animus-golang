@@ -1,5 +1,3 @@
-# Animus
-
 ![Animus — Enterprise ML Control Plane](docs/assets/animus-banner.png)
 
 **Enterprise ML Control Plane**
