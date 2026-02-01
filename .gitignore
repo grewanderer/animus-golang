@@ -10,11 +10,12 @@
 !/closed/dataset-registry/*.go
 !/closed/audit/
 !/closed/audit/*.go
+!/closed/frontend_landing/
+!/closed/frontend_landing/**
 
 # Next.js build output
 .next/
 frontend/.next/
-frontend_landing/
 
 # Dependencies
 node_modules/
