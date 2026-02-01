@@ -1,8 +1,0 @@
-node_modules
-.next
-out
-dist
-coverage
-package-lock.json
-public/**/*.png
-public/**/*.ico
