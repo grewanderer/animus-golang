@@ -10,19 +10,8 @@ type RunSpec struct {
 	DatasetBindings map[string]string
 	CodeRef         CodeRef
 	EnvLock         EnvLock
+	Parameters      Metadata
+	PolicySnapshot  PolicySnapshot
 	CreatedAt       time.Time
 	CreatedBy       string
-}
-
-// CodeRef identifies the exact source used for execution.
-type CodeRef struct {
-	RepoURL   string
-	CommitSHA string
-}
-
-// EnvLock captures the immutable execution environment bindings.
-type EnvLock struct {
-	ImageDigests  map[string]string
-	EnvTemplateID string
-	EnvHash       string
 }

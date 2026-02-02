@@ -1926,6 +1926,314 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/runs:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Создать RunSpec (контрольная плоскость)
+      description: |
+        Создаёт неизменяемый RunSpec для детерминированного планирования.
+        Для операций Create поддерживается идемпотентность по заголовку `Idempotency-Key`.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectRunCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectRunCreateResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/runs/{run_id}:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Получить RunSpec и состояние
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectRunGetResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/runs/{run_id}:plan:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Построить детерминированный план Run
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectRunPlanSummary"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Plan conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      summary: Получить план Run
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionPlan"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/runs/{run_id}:dry-run:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Выполнить dry‑run
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectRunDryRunResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      summary: Получить результаты dry‑run
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectRunDryRunExecutionsResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/runs/{run_id}/reproducibility-bundle:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Экспорт входов Run (reproducibility bundle)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectRunReproducibilityBundle"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthResponse:
@@ -3016,3 +3324,351 @@ components:
           type: string
         payload:
           type: object
+
+    ExecutionPlan:
+      type: object
+      additionalProperties: true
+    ProjectRunCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [pipelineSpec, datasetBindings, codeRef, envLock, parameters]
+      properties:
+        idempotencyKey:
+          type: string
+        pipelineSpec:
+          type: object
+          additionalProperties: true
+        datasetBindings:
+          type: object
+          additionalProperties:
+            type: string
+        codeRef:
+          $ref: "#/components/schemas/CodeRef"
+        envLock:
+          $ref: "#/components/schemas/EnvironmentLock"
+        parameters:
+          type: object
+          additionalProperties: true
+    ProjectRunCreateResponse:
+      type: object
+      additionalProperties: false
+      required: [runId, status, created, specHash]
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+        created:
+          type: boolean
+        specHash:
+          type: string
+    ProjectRunGetResponse:
+      type: object
+      additionalProperties: false
+      required: [runId, status, state, specHash, createdAt, planExists, runSpec]
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+        state:
+          type: string
+        specHash:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        planExists:
+          type: boolean
+        attemptsByStep:
+          type: object
+          additionalProperties:
+            type: integer
+        runSpec:
+          $ref: "#/components/schemas/RunSpec"
+    ProjectRunPlanSummary:
+      type: object
+      additionalProperties: false
+      required: [runId, stepCount, stepNames, state]
+      properties:
+        runId:
+          type: string
+        stepCount:
+          type: integer
+        stepNames:
+          type: array
+          items:
+            type: string
+        state:
+          type: string
+    ProjectRunDryRunResponse:
+      type: object
+      additionalProperties: false
+      required: [runId, status, state, existing, steps]
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+        state:
+          type: string
+        attemptsByStep:
+          type: object
+          additionalProperties:
+            type: integer
+        existing:
+          type: boolean
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/DryRunStepResult"
+    ProjectRunDryRunExecutionsResponse:
+      type: object
+      additionalProperties: false
+      required: [runId, state, planExists, executions]
+      properties:
+        runId:
+          type: string
+        state:
+          type: string
+        planExists:
+          type: boolean
+        attemptsByStep:
+          type: object
+          additionalProperties:
+            type: integer
+        executions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectRunStepExecution"
+    DryRunStepResult:
+      type: object
+      additionalProperties: false
+      required: [stepName, attempt, status]
+      properties:
+        stepName:
+          type: string
+        attempt:
+          type: integer
+        status:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        errorCode:
+          type: string
+        errorMessage:
+          type: string
+        result:
+          type: object
+          additionalProperties: true
+    ProjectRunStepExecution:
+      type: object
+      additionalProperties: false
+      required: [stepName, attempt, status, startedAt]
+      properties:
+        stepName:
+          type: string
+        attempt:
+          type: integer
+        status:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        errorCode:
+          type: string
+        errorMessage:
+          type: string
+        result:
+          type: object
+          additionalProperties: true
+    ProjectRunReproducibilityBundle:
+      type: object
+      additionalProperties: false
+      required: [schema, runId, projectId, specHash, runSpec, policySnapshotSha256, generatedAt]
+      properties:
+        schema:
+          type: string
+        runId:
+          type: string
+        projectId:
+          type: string
+        specHash:
+          type: string
+        runSpec:
+          $ref: "#/components/schemas/RunSpec"
+        policySnapshotSha256:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        generatedBy:
+          type: string
+    RunSpec:
+      type: object
+      additionalProperties: false
+      required: [runSpecVersion, projectId, pipelineSpec, datasetBindings, codeRef, envLock, parameters, policySnapshot, createdAt]
+      properties:
+        runSpecVersion:
+          type: string
+        projectId:
+          type: string
+        pipelineSpec:
+          type: object
+          additionalProperties: true
+        datasetBindings:
+          type: object
+          additionalProperties:
+            type: string
+        codeRef:
+          $ref: "#/components/schemas/CodeRef"
+        envLock:
+          $ref: "#/components/schemas/EnvironmentLock"
+        parameters:
+          type: object
+          additionalProperties: true
+        policySnapshot:
+          $ref: "#/components/schemas/PolicySnapshot"
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+    CodeRef:
+      type: object
+      additionalProperties: false
+      required: [repoUrl, commitSha]
+      properties:
+        repoUrl:
+          type: string
+        commitSha:
+          type: string
+        path:
+          type: string
+        scmType:
+          type: string
+    EnvironmentLock:
+      type: object
+      additionalProperties: false
+      required: [envHash, imageDigests]
+      properties:
+        lockId:
+          type: string
+        envHash:
+          type: string
+        envTemplateId:
+          type: string
+        imageDigests:
+          type: object
+          additionalProperties:
+            type: string
+        dependencyChecksums:
+          type: object
+          additionalProperties:
+            type: string
+        sbomRef:
+          type: string
+    PolicySnapshot:
+      type: object
+      additionalProperties: false
+      required: [snapshotVersion, capturedAt, rbac, policies, snapshotSha256]
+      properties:
+        snapshotVersion:
+          type: string
+        capturedAt:
+          type: string
+          format: date-time
+        capturedBy:
+          type: string
+        rbac:
+          $ref: "#/components/schemas/PolicySnapshotRBAC"
+        retention:
+          $ref: "#/components/schemas/PolicySnapshotRetention"
+        network:
+          $ref: "#/components/schemas/PolicySnapshotNetwork"
+        templates:
+          $ref: "#/components/schemas/PolicySnapshotTemplates"
+        policies:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicySnapshotPolicy"
+        snapshotSha256:
+          type: string
+    PolicySnapshotRBAC:
+      type: object
+      additionalProperties: false
+      required: [subject, roles, projectId]
+      properties:
+        subject:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        projectId:
+          type: string
+    PolicySnapshotRetention:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode:
+          type: string
+        policyId:
+          type: string
+        policyVersionId:
+          type: string
+        policySha256:
+          type: string
+        legalHold:
+          type: boolean
+    PolicySnapshotNetwork:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode:
+          type: string
+        allowlist:
+          type: array
+          items:
+            type: string
+        denylist:
+          type: array
+          items:
+            type: string
+    PolicySnapshotTemplates:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode:
+          type: string
+        allowedTemplateIds:
+          type: array
+          items:
+            type: string
+    PolicySnapshotPolicy:
+      type: object
+      additionalProperties: false
+      required: [policyId, policyVersionId, policySha256, status]
+      properties:
+        policyId:
+          type: string
+        policyName:
+          type: string
+        policyVersionId:
+          type: string
+        policyVersion:
+          type: integer
+        policySha256:
+          type: string
+        status:
+          type: string

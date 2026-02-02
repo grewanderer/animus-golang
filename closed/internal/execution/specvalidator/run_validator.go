@@ -2,7 +2,9 @@ package specvalidator
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
+	"unicode"
 
 	"github.com/animus-labs/animus-go/closed/internal/domain"
 )
@@ -17,17 +19,47 @@ func ValidateRunSpec(spec domain.RunSpec) error {
 	if strings.TrimSpace(spec.ProjectID) == "" {
 		issues.Add("projectId is required")
 	}
-	if strings.TrimSpace(spec.CodeRef.RepoURL) == "" {
+	repoURL := strings.TrimSpace(spec.CodeRef.RepoURL)
+	if repoURL == "" {
 		issues.Add("codeRef.repoUrl is required")
+	} else if !validRepoURL(repoURL) {
+		issues.Add("codeRef.repoUrl is invalid")
 	}
-	if strings.TrimSpace(spec.CodeRef.CommitSHA) == "" {
+	commit := strings.TrimSpace(spec.CodeRef.CommitSHA)
+	if commit == "" {
 		issues.Add("codeRef.commitSha is required")
+	} else if !validCommitSHA(commit) {
+		issues.Add("codeRef.commitSha must be hex (7..64)")
 	}
 	if strings.TrimSpace(spec.EnvLock.EnvHash) == "" {
 		issues.Add("envLock.envHash is required")
 	}
 	if spec.DatasetBindings == nil {
 		issues.Add("datasetBindings is required")
+	}
+	if spec.Parameters == nil {
+		issues.Add("parameters is required")
+	}
+	if spec.PolicySnapshot.SnapshotVersion == "" {
+		issues.Add("policySnapshot.snapshotVersion is required")
+	}
+	if spec.PolicySnapshot.SnapshotSHA256 == "" {
+		issues.Add("policySnapshot.snapshotSha256 is required")
+	}
+	if spec.PolicySnapshot.CapturedAt.IsZero() {
+		issues.Add("policySnapshot.capturedAt is required")
+	}
+	if strings.TrimSpace(spec.PolicySnapshot.RBAC.Subject) == "" {
+		issues.Add("policySnapshot.rbac.subject is required")
+	}
+	if strings.TrimSpace(spec.PolicySnapshot.RBAC.ProjectID) == "" {
+		issues.Add("policySnapshot.rbac.projectId is required")
+	}
+	if spec.PolicySnapshot.RBAC.Roles == nil {
+		issues.Add("policySnapshot.rbac.roles is required")
+	}
+	if spec.PolicySnapshot.Policies == nil {
+		issues.Add("policySnapshot.policies is required")
 	}
 
 	if err := ValidatePipelineSpec(spec.PipelineSpec); err != nil {
@@ -62,7 +94,9 @@ func ValidateRunSpec(spec domain.RunSpec) error {
 		}
 	}
 
-	if spec.EnvLock.ImageDigests != nil {
+	if spec.EnvLock.ImageDigests == nil || len(spec.EnvLock.ImageDigests) == 0 {
+		issues.Add("envLock.imageDigests is required")
+	} else {
 		for key, value := range spec.EnvLock.ImageDigests {
 			if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
 				issues.Add("envLock.imageDigests must not contain empty keys or values")
@@ -70,7 +104,64 @@ func ValidateRunSpec(spec domain.RunSpec) error {
 		}
 	}
 
+	if spec.Parameters != nil {
+		for key := range spec.Parameters {
+			if strings.TrimSpace(key) == "" {
+				issues.Add("parameters must not contain empty keys")
+			}
+		}
+	}
+
+	for _, policy := range spec.PolicySnapshot.Policies {
+		if strings.TrimSpace(policy.PolicyID) == "" {
+			issues.Add("policySnapshot.policies[].policyId is required")
+		}
+		if strings.TrimSpace(policy.PolicyVersionID) == "" {
+			issues.Add("policySnapshot.policies[].policyVersionId is required")
+		}
+		if strings.TrimSpace(policy.PolicySHA256) == "" {
+			issues.Add("policySnapshot.policies[].policySha256 is required")
+		}
+	}
+
 	return issues.OrNil()
+}
+
+func validRepoURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	if strings.HasPrefix(raw, "git@") {
+		parts := strings.SplitN(raw, ":", 2)
+		if len(parts) != 2 {
+			return false
+		}
+		host := strings.TrimSpace(strings.TrimPrefix(parts[0], "git@"))
+		path := strings.TrimSpace(parts[1])
+		return host != "" && path != ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return false
+	}
+	return true
+}
+
+func validCommitSHA(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if len(raw) < 7 || len(raw) > 64 {
+		return false
+	}
+	for _, r := range raw {
+		if !unicode.IsDigit(r) && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func pipelineDatasetRefs(spec domain.PipelineSpec) map[string]struct{} {

@@ -2,6 +2,7 @@ package specvalidator
 
 import (
 	"testing"
+	"time"
 
 	"github.com/animus-labs/animus-go/closed/internal/domain"
 )
@@ -55,6 +56,42 @@ func TestValidateRunSpec(t *testing.T) {
 			}(),
 			wantErr: true,
 		},
+		{
+			name: "missing image digests",
+			spec: func() domain.RunSpec {
+				rs := minimalRunSpec(pipelineWithDatasetRef("training"))
+				rs.EnvLock.ImageDigests = nil
+				return rs
+			}(),
+			wantErr: true,
+		},
+		{
+			name: "missing parameters",
+			spec: func() domain.RunSpec {
+				rs := minimalRunSpec(pipelineWithDatasetRef("training"))
+				rs.Parameters = nil
+				return rs
+			}(),
+			wantErr: true,
+		},
+		{
+			name: "missing policy snapshot",
+			spec: func() domain.RunSpec {
+				rs := minimalRunSpec(pipelineWithDatasetRef("training"))
+				rs.PolicySnapshot = domain.PolicySnapshot{}
+				return rs
+			}(),
+			wantErr: true,
+		},
+		{
+			name: "invalid repo url",
+			spec: func() domain.RunSpec {
+				rs := minimalRunSpec(pipelineWithDatasetRef("training"))
+				rs.CodeRef.RepoURL = "not a url"
+				return rs
+			}(),
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -77,8 +114,28 @@ func minimalRunSpec(pipeline domain.PipelineSpec) domain.RunSpec {
 			CommitSHA: "deadbeef",
 		},
 		EnvLock: domain.EnvLock{
-			EnvHash: "envhash",
+			EnvHash:      "envhash",
+			ImageDigests: map[string]string{"runtime": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 		},
+		Parameters: domain.Metadata{
+			"lr": 0.1,
+		},
+		PolicySnapshot: minimalPolicySnapshot(),
+	}
+}
+
+func minimalPolicySnapshot() domain.PolicySnapshot {
+	return domain.PolicySnapshot{
+		SnapshotVersion: "1.0",
+		CapturedAt:      time.Now().UTC(),
+		CapturedBy:      "actor",
+		RBAC: domain.PolicySnapshotRBAC{
+			Subject:   "actor",
+			Roles:     []string{"admin"},
+			ProjectID: "proj_123",
+		},
+		Policies:       []domain.PolicySnapshotPolicy{},
+		SnapshotSHA256: "snapsha",
 	}
 }
 

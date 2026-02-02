@@ -18,6 +18,7 @@ import (
 	"github.com/animus-labs/animus-go/closed/internal/platform/auth"
 	"github.com/animus-labs/animus-go/closed/internal/repo"
 	"github.com/animus-labs/animus-go/closed/internal/repo/postgres"
+	"github.com/google/uuid"
 )
 
 const runSpecVersion = "1.0"
@@ -27,6 +28,8 @@ var (
 	errInvalidPipelineSpec   = errors.New("invalid pipeline spec")
 	errDatasetBindingsNeeded = errors.New("dataset bindings required")
 	errInvalidRunSpec        = errors.New("invalid run spec")
+	errDatasetVersionMissing = errors.New("dataset version not found")
+	errEnvTemplateMissing    = errors.New("environment template not found")
 )
 
 type createRunRequest struct {
@@ -35,17 +38,23 @@ type createRunRequest struct {
 	DatasetBindings map[string]string `json:"datasetBindings"`
 	CodeRef         runSpecCodeRef    `json:"codeRef"`
 	EnvLock         runSpecEnvLock    `json:"envLock"`
+	Parameters      map[string]any    `json:"parameters"`
 }
 
 type runSpecCodeRef struct {
 	RepoURL   string `json:"repoUrl"`
 	CommitSHA string `json:"commitSha"`
+	Path      string `json:"path,omitempty"`
+	SCMType   string `json:"scmType,omitempty"`
 }
 
 type runSpecEnvLock struct {
-	EnvHash       string            `json:"envHash"`
-	EnvTemplateID string            `json:"envTemplateId,omitempty"`
-	ImageDigests  map[string]string `json:"imageDigests,omitempty"`
+	EnvHash             string            `json:"envHash"`
+	EnvTemplateID       string            `json:"envTemplateId,omitempty"`
+	ImageDigests        map[string]string `json:"imageDigests,omitempty"`
+	DependencyChecksums map[string]string `json:"dependencyChecksums,omitempty"`
+	SBOMRef             string            `json:"sbomRef,omitempty"`
+	LockID              string            `json:"lockId,omitempty"`
 }
 
 type createRunResponse struct {
@@ -85,12 +94,22 @@ func (api *experimentsAPI) handleCreateRun(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	idempotencyKey := strings.TrimSpace(req.IdempotencyKey)
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if idempotencyKey == "" {
+		idempotencyKey = strings.TrimSpace(req.IdempotencyKey)
+	}
 	if idempotencyKey == "" {
 		api.writeError(w, r, http.StatusBadRequest, "idempotency_key_required")
 		return
 	}
-	_, runSpec, err := buildRunSpec(projectID, identity.Subject, req)
+
+	policySnapshot, err := api.buildPolicySnapshot(r.Context(), projectID, identity)
+	if err != nil {
+		api.writeError(w, r, http.StatusInternalServerError, "policy_snapshot_failed")
+		return
+	}
+
+	_, runSpec, err := buildRunSpec(projectID, identity.Subject, req, policySnapshot)
 	if err != nil {
 		switch err {
 		case errPipelineSpecRequired:
@@ -101,9 +120,31 @@ func (api *experimentsAPI) handleCreateRun(w http.ResponseWriter, r *http.Reques
 			api.writeError(w, r, http.StatusBadRequest, "dataset_bindings_required")
 		case errInvalidRunSpec:
 			api.writeError(w, r, http.StatusBadRequest, "invalid_run_spec")
+		case errDatasetVersionMissing:
+			api.writeError(w, r, http.StatusNotFound, "dataset_version_not_found")
+		case errEnvTemplateMissing:
+			api.writeError(w, r, http.StatusNotFound, "env_template_not_found")
 		default:
 			api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 		}
+		return
+	}
+
+	if err := api.ensureDatasetBindingsExist(r.Context(), projectID, runSpec.DatasetBindings); err != nil {
+		if errors.Is(err, errDatasetVersionMissing) {
+			api.writeError(w, r, http.StatusNotFound, "dataset_version_not_found")
+			return
+		}
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+
+	if err := api.ensureEnvTemplateExists(r.Context(), projectID, runSpec.EnvLock.EnvTemplateID); err != nil {
+		if errors.Is(err, errEnvTemplateMissing) {
+			api.writeError(w, r, http.StatusNotFound, "env_template_not_found")
+			return
+		}
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 		return
 	}
 
@@ -128,7 +169,8 @@ func (api *experimentsAPI) handleCreateRun(w http.ResponseWriter, r *http.Reques
 	defer func() { _ = tx.Rollback() }()
 
 	runStore := postgres.NewRunSpecStore(tx)
-	if runStore == nil {
+	bindingsStore := postgres.NewRunBindingsStore(tx)
+	if runStore == nil || bindingsStore == nil {
 		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 		return
 	}
@@ -140,6 +182,11 @@ func (api *experimentsAPI) handleCreateRun(w http.ResponseWriter, r *http.Reques
 	}
 	if !created && record.SpecHash != specHash {
 		api.writeError(w, r, http.StatusConflict, "idempotency_conflict")
+		return
+	}
+
+	if err := api.persistRunBindings(r.Context(), bindingsStore, record.ID, projectID, runSpec, identity.Subject); err != nil {
+		api.writeError(w, r, http.StatusInternalServerError, "run_binding_failed")
 		return
 	}
 
@@ -269,7 +316,7 @@ func decodePipelineSpec(raw json.RawMessage) (domain.PipelineSpec, error) {
 	return spec, nil
 }
 
-func buildRunSpec(projectID, actor string, req createRunRequest) (domain.PipelineSpec, domain.RunSpec, error) {
+func buildRunSpec(projectID, actor string, req createRunRequest, snapshot domain.PolicySnapshot) (domain.PipelineSpec, domain.RunSpec, error) {
 	if len(req.PipelineSpec) == 0 {
 		return domain.PipelineSpec{}, domain.RunSpec{}, errPipelineSpecRequired
 	}
@@ -292,14 +339,21 @@ func buildRunSpec(projectID, actor string, req createRunRequest) (domain.Pipelin
 		CodeRef: domain.CodeRef{
 			RepoURL:   strings.TrimSpace(req.CodeRef.RepoURL),
 			CommitSHA: strings.TrimSpace(req.CodeRef.CommitSHA),
+			Path:      strings.TrimSpace(req.CodeRef.Path),
+			SCMType:   strings.TrimSpace(req.CodeRef.SCMType),
 		},
 		EnvLock: domain.EnvLock{
-			ImageDigests:  req.EnvLock.ImageDigests,
-			EnvTemplateID: strings.TrimSpace(req.EnvLock.EnvTemplateID),
-			EnvHash:       strings.TrimSpace(req.EnvLock.EnvHash),
+			LockID:              uuid.NewString(),
+			ImageDigests:        req.EnvLock.ImageDigests,
+			DependencyChecksums: req.EnvLock.DependencyChecksums,
+			EnvTemplateID:       strings.TrimSpace(req.EnvLock.EnvTemplateID),
+			EnvHash:             strings.TrimSpace(req.EnvLock.EnvHash),
+			SBOMRef:             strings.TrimSpace(req.EnvLock.SBOMRef),
 		},
-		CreatedAt: time.Now().UTC(),
-		CreatedBy: strings.TrimSpace(actor),
+		Parameters:     req.Parameters,
+		PolicySnapshot: snapshot,
+		CreatedAt:      time.Now().UTC(),
+		CreatedBy:      strings.TrimSpace(actor),
 	}
 	if err := specvalidator.ValidateRunSpec(runSpec); err != nil {
 		return domain.PipelineSpec{}, domain.RunSpec{}, errInvalidRunSpec
@@ -316,27 +370,36 @@ func marshalRunSpec(spec domain.RunSpec, pipelineSpecJSON []byte) ([]byte, error
 		CodeRef: runSpecCodeRef{
 			RepoURL:   spec.CodeRef.RepoURL,
 			CommitSHA: spec.CodeRef.CommitSHA,
+			Path:      spec.CodeRef.Path,
+			SCMType:   spec.CodeRef.SCMType,
 		},
 		EnvLock: runSpecEnvLock{
-			EnvHash:       spec.EnvLock.EnvHash,
-			EnvTemplateID: spec.EnvLock.EnvTemplateID,
-			ImageDigests:  spec.EnvLock.ImageDigests,
+			EnvHash:             spec.EnvLock.EnvHash,
+			EnvTemplateID:       spec.EnvLock.EnvTemplateID,
+			ImageDigests:        spec.EnvLock.ImageDigests,
+			DependencyChecksums: spec.EnvLock.DependencyChecksums,
+			SBOMRef:             spec.EnvLock.SBOMRef,
+			LockID:              spec.EnvLock.LockID,
 		},
-		CreatedAt: spec.CreatedAt,
-		CreatedBy: strings.TrimSpace(spec.CreatedBy),
+		Parameters:     spec.Parameters,
+		PolicySnapshot: spec.PolicySnapshot,
+		CreatedAt:      spec.CreatedAt,
+		CreatedBy:      strings.TrimSpace(spec.CreatedBy),
 	}
 	return json.Marshal(payload)
 }
 
 type runSpecPayload struct {
-	RunSpecVersion  string            `json:"runSpecVersion"`
-	ProjectID       string            `json:"projectId"`
-	PipelineSpec    json.RawMessage   `json:"pipelineSpec"`
-	DatasetBindings map[string]string `json:"datasetBindings"`
-	CodeRef         runSpecCodeRef    `json:"codeRef"`
-	EnvLock         runSpecEnvLock    `json:"envLock"`
-	CreatedAt       time.Time         `json:"createdAt"`
-	CreatedBy       string            `json:"createdBy,omitempty"`
+	RunSpecVersion  string                `json:"runSpecVersion"`
+	ProjectID       string                `json:"projectId"`
+	PipelineSpec    json.RawMessage       `json:"pipelineSpec"`
+	DatasetBindings map[string]string     `json:"datasetBindings"`
+	CodeRef         runSpecCodeRef        `json:"codeRef"`
+	EnvLock         runSpecEnvLock        `json:"envLock"`
+	Parameters      map[string]any        `json:"parameters"`
+	PolicySnapshot  domain.PolicySnapshot `json:"policySnapshot"`
+	CreatedAt       time.Time             `json:"createdAt"`
+	CreatedBy       string                `json:"createdBy,omitempty"`
 }
 
 func hashRunSpec(spec domain.RunSpec) (string, error) {
@@ -348,12 +411,18 @@ func hashRunSpec(spec domain.RunSpec) (string, error) {
 		CodeRef: runSpecCodeRef{
 			RepoURL:   spec.CodeRef.RepoURL,
 			CommitSHA: spec.CodeRef.CommitSHA,
+			Path:      spec.CodeRef.Path,
+			SCMType:   spec.CodeRef.SCMType,
 		},
 		EnvLock: canonicalEnvLock{
-			EnvHash:       spec.EnvLock.EnvHash,
-			EnvTemplateID: spec.EnvLock.EnvTemplateID,
-			ImageDigests:  sortedDigests(spec.EnvLock.ImageDigests),
+			EnvHash:             spec.EnvLock.EnvHash,
+			EnvTemplateID:       spec.EnvLock.EnvTemplateID,
+			ImageDigests:        sortedDigests(spec.EnvLock.ImageDigests),
+			DependencyChecksums: sortedChecksums(spec.EnvLock.DependencyChecksums),
+			SBOMRef:             spec.EnvLock.SBOMRef,
 		},
+		Parameters:        canonicalParameters(spec.Parameters),
+		PolicySnapshotSHA: spec.PolicySnapshot.SnapshotSHA256,
 	}
 	blob, err := json.Marshal(canonical)
 	if err != nil {
@@ -364,18 +433,22 @@ func hashRunSpec(spec domain.RunSpec) (string, error) {
 }
 
 type canonicalRunSpec struct {
-	RunSpecVersion  string                `json:"runSpecVersion"`
-	ProjectID       string                `json:"projectId"`
-	PipelineSpec    canonicalPipelineSpec `json:"pipelineSpec"`
-	DatasetBindings []bindingPair         `json:"datasetBindings"`
-	CodeRef         runSpecCodeRef        `json:"codeRef"`
-	EnvLock         canonicalEnvLock      `json:"envLock"`
+	RunSpecVersion    string                `json:"runSpecVersion"`
+	ProjectID         string                `json:"projectId"`
+	PipelineSpec      canonicalPipelineSpec `json:"pipelineSpec"`
+	DatasetBindings   []bindingPair         `json:"datasetBindings"`
+	CodeRef           runSpecCodeRef        `json:"codeRef"`
+	EnvLock           canonicalEnvLock      `json:"envLock"`
+	Parameters        json.RawMessage       `json:"parameters"`
+	PolicySnapshotSHA string                `json:"policySnapshotSha256"`
 }
 
 type canonicalEnvLock struct {
-	EnvHash       string       `json:"envHash"`
-	EnvTemplateID string       `json:"envTemplateId,omitempty"`
-	ImageDigests  []digestPair `json:"imageDigests,omitempty"`
+	EnvHash             string         `json:"envHash"`
+	EnvTemplateID       string         `json:"envTemplateId,omitempty"`
+	ImageDigests        []digestPair   `json:"imageDigests,omitempty"`
+	DependencyChecksums []checksumPair `json:"dependencyChecksums,omitempty"`
+	SBOMRef             string         `json:"sbomRef,omitempty"`
 }
 
 type bindingPair struct {
@@ -386,6 +459,11 @@ type bindingPair struct {
 type digestPair struct {
 	ImageRef string `json:"imageRef"`
 	Digest   string `json:"digest"`
+}
+
+type checksumPair struct {
+	Key      string `json:"key"`
+	Checksum string `json:"checksum"`
 }
 
 type canonicalPipelineSpec struct {
@@ -629,6 +707,36 @@ func sortedDigests(digests map[string]string) []digestPair {
 		})
 	}
 	return out
+}
+
+func sortedChecksums(checksums map[string]string) []checksumPair {
+	if len(checksums) == 0 {
+		return []checksumPair{}
+	}
+	keys := make([]string, 0, len(checksums))
+	for key := range checksums {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]checksumPair, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, checksumPair{
+			Key:      key,
+			Checksum: checksums[key],
+		})
+	}
+	return out
+}
+
+func canonicalParameters(params map[string]any) json.RawMessage {
+	if params == nil {
+		return json.RawMessage(`{}`)
+	}
+	blob, err := json.Marshal(params)
+	if err != nil {
+		return json.RawMessage(`{}`)
+	}
+	return json.RawMessage(blob)
 }
 
 func sortedLabels(labels map[string]string) []labelPair {
