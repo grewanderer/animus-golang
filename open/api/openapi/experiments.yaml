@@ -2344,6 +2344,118 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/role-bindings:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: List project role bindings
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleBindingListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Create or update a role binding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleBindingRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleBindingResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/role-bindings/{binding_id}:delete:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: binding_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Delete a role binding
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /projects/{project_id}/environment-definitions:
     parameters:
       - name: project_id
@@ -4458,3 +4570,68 @@ components:
           type: string
         status:
           type: string
+    StatusResponse:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+    RoleBinding:
+      type: object
+      additionalProperties: false
+      required: [binding_id, project_id, subject_type, subject, role, created_at, created_by, updated_at, updated_by]
+      properties:
+        binding_id:
+          type: string
+        project_id:
+          type: string
+        subject_type:
+          type: string
+          enum: [subject, email, group, service]
+        subject:
+          type: string
+        role:
+          type: string
+          enum: [viewer, editor, admin]
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        updated_by:
+          type: string
+    RoleBindingRequest:
+      type: object
+      additionalProperties: false
+      required: [subject_type, subject, role]
+      properties:
+        subject_type:
+          type: string
+          enum: [subject, email, group, service]
+        subject:
+          type: string
+        role:
+          type: string
+          enum: [viewer, editor, admin]
+    RoleBindingResponse:
+      type: object
+      additionalProperties: false
+      required: [binding, created]
+      properties:
+        binding:
+          $ref: "#/components/schemas/RoleBinding"
+        created:
+          type: boolean
+    RoleBindingListResponse:
+      type: object
+      additionalProperties: false
+      required: [bindings]
+      properties:
+        bindings:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoleBinding"

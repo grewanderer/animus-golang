@@ -91,6 +91,9 @@ func (api *experimentsAPI) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /projects/{project_id}/runs/{run_id}:plan", api.handleGetRunPlan)
 	mux.HandleFunc("POST /projects/{project_id}/runs/{run_id}:dry-run", api.handleDryRun)
 	mux.HandleFunc("GET /projects/{project_id}/runs/{run_id}:dry-run", api.handleGetDryRun)
+	mux.HandleFunc("POST /projects/{project_id}/role-bindings", api.handleUpsertRoleBinding)
+	mux.HandleFunc("GET /projects/{project_id}/role-bindings", api.handleListRoleBindings)
+	mux.HandleFunc("POST /projects/{project_id}/role-bindings/{binding_id}:delete", api.handleDeleteRoleBinding)
 
 	mux.HandleFunc("POST /projects/{project_id}/environment-definitions", api.handleCreateEnvironmentDefinition)
 	mux.HandleFunc("GET /projects/{project_id}/environment-definitions", api.handleListEnvironmentDefinitions)
@@ -169,6 +172,12 @@ func (api *experimentsAPI) handleCreateExperiment(w http.ResponseWriter, r *http
 		return
 	}
 
+	projectID, ok := auth.ProjectIDFromContext(r.Context())
+	if !ok || strings.TrimSpace(projectID) == "" {
+		api.writeError(w, r, http.StatusBadRequest, "project_id_required")
+		return
+	}
+
 	var req createExperimentRequest
 	if err := decodeJSON(r, &req); err != nil {
 		api.writeError(w, r, http.StatusBadRequest, "invalid_json")
@@ -196,6 +205,7 @@ func (api *experimentsAPI) handleCreateExperiment(w http.ResponseWriter, r *http
 
 	type integrityInput struct {
 		ExperimentID string          `json:"experiment_id"`
+		ProjectID    string          `json:"project_id"`
 		Name         string          `json:"name"`
 		Description  string          `json:"description,omitempty"`
 		Metadata     json.RawMessage `json:"metadata"`
@@ -204,6 +214,7 @@ func (api *experimentsAPI) handleCreateExperiment(w http.ResponseWriter, r *http
 	}
 	integrity, err := integritySHA256(integrityInput{
 		ExperimentID: experimentID,
+		ProjectID:    projectID,
 		Name:         name,
 		Description:  description,
 		Metadata:     metadataJSON,
@@ -226,14 +237,16 @@ func (api *experimentsAPI) handleCreateExperiment(w http.ResponseWriter, r *http
 		r.Context(),
 		`INSERT INTO experiments (
 			experiment_id,
+			project_id,
 			name,
 			description,
 			metadata,
 			created_at,
 			created_by,
 			integrity_sha256
-		) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 		experimentID,
+		projectID,
 		name,
 		nullString(description),
 		metadataJSON,
@@ -292,6 +305,11 @@ func (api *experimentsAPI) handleCreateExperiment(w http.ResponseWriter, r *http
 }
 
 func (api *experimentsAPI) handleListExperiments(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := auth.ProjectIDFromContext(r.Context())
+	if !ok || strings.TrimSpace(projectID) == "" {
+		api.writeError(w, r, http.StatusBadRequest, "project_id_required")
+		return
+	}
 	limit := clampInt(parseIntQuery(r, "limit", 100), 1, 500)
 	nameFilter := strings.TrimSpace(r.URL.Query().Get("name"))
 
@@ -304,9 +322,10 @@ func (api *experimentsAPI) handleListExperiments(w http.ResponseWriter, r *http.
 			r.Context(),
 			`SELECT experiment_id, name, description, metadata, created_at, created_by
 			 FROM experiments
-			 WHERE name = $1
+			 WHERE project_id = $1 AND name = $2
 			 ORDER BY created_at DESC
-			 LIMIT $2`,
+			 LIMIT $3`,
+			projectID,
 			nameFilter,
 			limit,
 		)
@@ -315,8 +334,10 @@ func (api *experimentsAPI) handleListExperiments(w http.ResponseWriter, r *http.
 			r.Context(),
 			`SELECT experiment_id, name, description, metadata, created_at, created_by
 			 FROM experiments
+			 WHERE project_id = $1
 			 ORDER BY created_at DESC
-			 LIMIT $1`,
+			 LIMIT $2`,
+			projectID,
 			limit,
 		)
 	}
@@ -358,6 +379,12 @@ func (api *experimentsAPI) handleListExperiments(w http.ResponseWriter, r *http.
 }
 
 func (api *experimentsAPI) handleGetExperiment(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := auth.ProjectIDFromContext(r.Context())
+	if !ok || strings.TrimSpace(projectID) == "" {
+		api.writeError(w, r, http.StatusBadRequest, "project_id_required")
+		return
+	}
+
 	experimentID := strings.TrimSpace(r.PathValue("experiment_id"))
 	if experimentID == "" {
 		api.writeError(w, r, http.StatusBadRequest, "experiment_id_required")
@@ -375,8 +402,9 @@ func (api *experimentsAPI) handleGetExperiment(w http.ResponseWriter, r *http.Re
 		r.Context(),
 		`SELECT name, description, metadata, created_at, created_by
 		 FROM experiments
-		 WHERE experiment_id = $1`,
+		 WHERE experiment_id = $1 AND project_id = $2`,
 		experimentID,
+		projectID,
 	).Scan(&name, &description, &metadata, &createdAt, &createdBy)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -443,6 +471,12 @@ func (api *experimentsAPI) handleCreateExperimentRun(w http.ResponseWriter, r *h
 	experimentID := strings.TrimSpace(r.PathValue("experiment_id"))
 	if experimentID == "" {
 		api.writeError(w, r, http.StatusBadRequest, "experiment_id_required")
+		return
+	}
+
+	projectID, err := projectIDForExperiment(r.Context(), api.db, experimentID)
+	if err != nil || strings.TrimSpace(projectID) == "" {
+		api.writeError(w, r, http.StatusNotFound, "not_found")
 		return
 	}
 
@@ -526,6 +560,7 @@ func (api *experimentsAPI) handleCreateExperimentRun(w http.ResponseWriter, r *h
 	type integrityInput struct {
 		RunID            string          `json:"run_id"`
 		ExperimentID     string          `json:"experiment_id"`
+		ProjectID        string          `json:"project_id"`
 		DatasetVersionID string          `json:"dataset_version_id,omitempty"`
 		Status           string          `json:"status"`
 		StartedAt        time.Time       `json:"started_at"`
@@ -540,6 +575,7 @@ func (api *experimentsAPI) handleCreateExperimentRun(w http.ResponseWriter, r *h
 	integrity, err := integritySHA256(integrityInput{
 		RunID:            runID,
 		ExperimentID:     experimentID,
+		ProjectID:        projectID,
 		DatasetVersionID: datasetVersionID,
 		Status:           status,
 		StartedAt:        startedAt,
@@ -568,6 +604,7 @@ func (api *experimentsAPI) handleCreateExperimentRun(w http.ResponseWriter, r *h
 		`INSERT INTO experiment_runs (
 			run_id,
 			experiment_id,
+			project_id,
 			dataset_version_id,
 			status,
 			started_at,
@@ -579,9 +616,10 @@ func (api *experimentsAPI) handleCreateExperimentRun(w http.ResponseWriter, r *h
 			metrics,
 			artifacts_prefix,
 			integrity_sha256
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 		runID,
 		experimentID,
+		projectID,
 		nullString(datasetVersionID),
 		status,
 		startedAt,
@@ -838,6 +876,11 @@ func (api *experimentsAPI) handleListExperimentRuns(w http.ResponseWriter, r *ht
 }
 
 func (api *experimentsAPI) handleListAllExperimentRuns(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := auth.ProjectIDFromContext(r.Context())
+	if !ok || strings.TrimSpace(projectID) == "" {
+		api.writeError(w, r, http.StatusBadRequest, "project_id_required")
+		return
+	}
 	limit := clampInt(parseIntQuery(r, "limit", 100), 1, 500)
 
 	statusFilter := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
@@ -879,10 +922,12 @@ func (api *experimentsAPI) handleListAllExperimentRuns(w http.ResponseWriter, r 
 			ORDER BY observed_at DESC
 			LIMIT 1
 		 ) s ON true
-		 WHERE ($1::bool IS false OR COALESCE(s.status, r.status) IN ('pending','running'))
-		   AND ($2 = '' OR COALESCE(s.status, r.status) = $2)
+		 WHERE r.project_id = $1
+		   AND ($2::bool IS false OR COALESCE(s.status, r.status) IN ('pending','running'))
+		   AND ($3 = '' OR COALESCE(s.status, r.status) = $3)
 		 ORDER BY r.started_at DESC
-		 LIMIT $3`,
+		 LIMIT $4`,
+		projectID,
 		active,
 		statusFilter,
 		limit,

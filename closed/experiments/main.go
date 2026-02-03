@@ -18,6 +18,8 @@ import (
 	"github.com/animus-labs/animus-go/closed/internal/platform/k8s"
 	"github.com/animus-labs/animus-go/closed/internal/platform/objectstore"
 	"github.com/animus-labs/animus-go/closed/internal/platform/postgres"
+	"github.com/animus-labs/animus-go/closed/internal/platform/rbac"
+	repopg "github.com/animus-labs/animus-go/closed/internal/repo/postgres"
 	"github.com/animus-labs/animus-go/closed/internal/runtimeexec"
 )
 
@@ -30,6 +32,12 @@ func main() {
 
 	addr := env.String("EXPERIMENTS_HTTP_ADDR", ":8083")
 	shutdownTimeout, err := env.Duration("EXPERIMENTS_SHUTDOWN_TIMEOUT", 10*time.Second)
+	if err != nil {
+		logger.Error("invalid env", "error", err)
+		os.Exit(2)
+	}
+
+	rbacAllowDirect, err := env.Bool("AUTH_RBAC_ALLOW_DIRECT_ROLES", true)
 	if err != nil {
 		logger.Error("invalid env", "error", err)
 		os.Exit(2)
@@ -140,7 +148,14 @@ func main() {
 		os.Exit(2)
 	}
 
-	authorizer := auth.MethodRoleAuthorizer()
+	roleBindings := repopg.NewRoleBindingStore(db)
+	auditAppender := repopg.NewAuditAppender(db, nil)
+	authorizer := rbac.Authorizer{
+		Store:           roleBindings,
+		Audit:           auditAppender,
+		AllowDirect:     rbacAllowDirect,
+		RequiredRoleFor: experimentsRequiredRole,
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", httpserver.Healthz("experiments"))
@@ -229,7 +244,8 @@ func main() {
 	handler := auth.Middleware{
 		Logger:        logger,
 		Authenticator: headersAuth,
-		Authorize:     authorizer,
+		Authorize:      authorizer.Authorize,
+		ProjectResolve: experimentsProjectResolver(db),
 		Audit: func(ctx context.Context, event auth.DenyEvent) error {
 			auditCtx, cancel := context.WithTimeout(ctx, 750*time.Millisecond)
 			defer cancel()

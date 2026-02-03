@@ -67,27 +67,6 @@ func (m Middleware) Wrap(next http.Handler) http.Handler {
 			return
 		}
 
-		if m.Authorize != nil {
-			if err := m.Authorize(r, identity); err != nil {
-				if errors.Is(err, ErrForbidden) {
-					m.logDeny(r, http.StatusForbidden, "forbidden", err, "subject", identity.Subject)
-					m.auditDeny(r, identity, http.StatusForbidden, "forbidden", err)
-					writeJSON(w, http.StatusForbidden, map[string]any{
-						"error":      "forbidden",
-						"request_id": r.Header.Get("X-Request-Id"),
-					})
-					return
-				}
-				m.logDeny(r, http.StatusForbidden, "forbidden", err, "subject", identity.Subject)
-				m.auditDeny(r, identity, http.StatusForbidden, "forbidden", err)
-				writeJSON(w, http.StatusForbidden, map[string]any{
-					"error":      "forbidden",
-					"request_id": r.Header.Get("X-Request-Id"),
-				})
-				return
-			}
-		}
-
 		if m.ProjectResolve != nil {
 			projectID, err := m.ProjectResolve(r, identity)
 			if err != nil {
@@ -107,6 +86,27 @@ func (m Middleware) Wrap(next http.Handler) http.Handler {
 			}
 			if strings.TrimSpace(projectID) != "" {
 				r = r.WithContext(ContextWithProjectID(r.Context(), projectID))
+			}
+		}
+
+		if m.Authorize != nil {
+			if err := m.Authorize(r, identity); err != nil {
+				if errors.Is(err, ErrForbidden) {
+					m.logDeny(r, http.StatusForbidden, "forbidden", err, "subject", identity.Subject)
+					m.auditDeny(r, identity, http.StatusForbidden, "forbidden", err)
+					writeJSON(w, http.StatusForbidden, map[string]any{
+						"error":      "forbidden",
+						"request_id": r.Header.Get("X-Request-Id"),
+					})
+					return
+				}
+				m.logDeny(r, http.StatusForbidden, "forbidden", err, "subject", identity.Subject)
+				m.auditDeny(r, identity, http.StatusForbidden, "forbidden", err)
+				writeJSON(w, http.StatusForbidden, map[string]any{
+					"error":      "forbidden",
+					"request_id": r.Header.Get("X-Request-Id"),
+				})
+				return
 			}
 		}
 

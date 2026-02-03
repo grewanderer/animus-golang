@@ -59,6 +59,24 @@ type RunRecord struct {
 	CreatedAt      time.Time
 }
 
+type RoleBindingSubject struct {
+	Type  string
+	Value string
+}
+
+type RoleBindingRecord struct {
+	BindingID    string
+	ProjectID    string
+	SubjectType  string
+	Subject      string
+	Role         string
+	CreatedAt    time.Time
+	CreatedBy    string
+	UpdatedAt    time.Time
+	UpdatedBy    string
+	IntegritySHA string
+}
+
 type SessionRecord struct {
 	SessionID     string
 	Subject       string
@@ -153,6 +171,13 @@ type PlanRepository interface {
 type StepExecutionRepository interface {
 	InsertAttempt(ctx context.Context, record StepExecutionRecord) (StepExecutionRecord, bool, error)
 	ListByRun(ctx context.Context, projectID, runID string) ([]StepExecutionRecord, error)
+}
+
+type RoleBindingRepository interface {
+	Upsert(ctx context.Context, record RoleBindingRecord) (RoleBindingRecord, bool, error)
+	ListByProject(ctx context.Context, projectID string) ([]RoleBindingRecord, error)
+	ListBySubjects(ctx context.Context, projectID string, subjects []RoleBindingSubject) ([]RoleBindingRecord, error)
+	Delete(ctx context.Context, projectID, bindingID string) error
 }
 
 type SessionRepository interface {

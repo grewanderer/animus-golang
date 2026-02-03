@@ -16,6 +16,7 @@ import (
 	"github.com/animus-labs/animus-go/closed/internal/platform/httpserver"
 	"github.com/animus-labs/animus-go/closed/internal/platform/objectstore"
 	"github.com/animus-labs/animus-go/closed/internal/platform/postgres"
+	"github.com/animus-labs/animus-go/closed/internal/platform/rbac"
 	repopg "github.com/animus-labs/animus-go/closed/internal/repo/postgres"
 	artifactsvc "github.com/animus-labs/animus-go/closed/internal/service/artifacts"
 	storageobjectstore "github.com/animus-labs/animus-go/closed/internal/storage/objectstore"
@@ -30,6 +31,12 @@ func main() {
 
 	addr := env.String("DATASET_REGISTRY_HTTP_ADDR", ":8081")
 	shutdownTimeout, err := env.Duration("DATASET_REGISTRY_SHUTDOWN_TIMEOUT", 10*time.Second)
+	if err != nil {
+		logger.Error("invalid env", "error", err)
+		os.Exit(2)
+	}
+
+	rbacAllowDirect, err := env.Bool("AUTH_RBAC_ALLOW_DIRECT_ROLES", true)
 	if err != nil {
 		logger.Error("invalid env", "error", err)
 		os.Exit(2)
@@ -72,7 +79,13 @@ func main() {
 		os.Exit(2)
 	}
 
-	authorizer := auth.MethodRoleAuthorizer()
+	roleBindings := repopg.NewRoleBindingStore(db)
+	authAuditAppender := repopg.NewAuditAppender(db, nil)
+	authorizer := rbac.Authorizer{
+		Store:       roleBindings,
+		Audit:       authAuditAppender,
+		AllowDirect: rbacAllowDirect,
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", httpserver.Healthz("dataset-registry"))
@@ -146,7 +159,7 @@ func main() {
 	handler := auth.Middleware{
 		Logger:         logger,
 		Authenticator:  headersAuth,
-		Authorize:      authorizer,
+		Authorize:      authorizer.Authorize,
 		ProjectResolve: projectResolver,
 		Audit: func(ctx context.Context, event auth.DenyEvent) error {
 			auditCtx, cancel := context.WithTimeout(ctx, 750*time.Millisecond)
