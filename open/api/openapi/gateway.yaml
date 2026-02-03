@@ -51,6 +51,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusResponse"
+  /auth/force-logout:
+    post:
+      summary: Force logout a session or subject
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForceLogoutRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForceLogoutResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /auth/login:
     get:
       summary: Start OIDC login flow
@@ -555,6 +584,24 @@ components:
           type: array
           items:
             type: string
+    ForceLogoutRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        session_id:
+          type: string
+        subject:
+          type: string
+        reason:
+          type: string
+      description: Provide either session_id or subject.
+    ForceLogoutResponse:
+      type: object
+      additionalProperties: false
+      required: [revoked]
+      properties:
+        revoked:
+          type: integer
     ErrorResponse:
       type: object
       additionalProperties: false

@@ -59,6 +59,25 @@ type RunRecord struct {
 	CreatedAt      time.Time
 }
 
+type SessionRecord struct {
+	SessionID     string
+	Subject       string
+	Email         string
+	Roles         []string
+	Issuer        string
+	CreatedAt     time.Time
+	ExpiresAt     time.Time
+	LastSeenAt    *time.Time
+	RevokedAt     *time.Time
+	RevokedBy     string
+	RevokeReason  string
+	IDTokenSHA256 string
+	UserAgent     string
+	IP            string
+	Metadata      domain.Metadata
+}
+
+
 type PlanRecord struct {
 	ID        string
 	RunID     string
@@ -134,6 +153,15 @@ type PlanRepository interface {
 type StepExecutionRepository interface {
 	InsertAttempt(ctx context.Context, record StepExecutionRecord) (StepExecutionRecord, bool, error)
 	ListByRun(ctx context.Context, projectID, runID string) ([]StepExecutionRecord, error)
+}
+
+type SessionRepository interface {
+	Create(ctx context.Context, record SessionRecord) error
+	Get(ctx context.Context, sessionID string) (SessionRecord, error)
+	ListActiveBySubject(ctx context.Context, subject string, limit int) ([]SessionRecord, error)
+	UpdateLastSeen(ctx context.Context, sessionID string, at time.Time) error
+	Revoke(ctx context.Context, sessionID, revokedBy, reason string, at time.Time) (bool, error)
+	RevokeBySubject(ctx context.Context, subject, revokedBy, reason string, at time.Time) (int, error)
 }
 
 // AuditEventAppender ensures append-only audit writes.

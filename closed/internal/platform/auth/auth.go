@@ -13,6 +13,7 @@ type Mode string
 
 const (
 	ModeOIDC     Mode = "oidc"
+	ModeSAML     Mode = "saml"
 	ModeDev      Mode = "dev"
 	ModeDisabled Mode = "disabled"
 )
@@ -29,6 +30,8 @@ type Config struct {
 	SessionCookieSecure   bool
 	SessionCookieMaxAge   time.Duration
 	SessionCookieSameSite string
+	SessionMaxConcurrent  int
+	RBACAllowDirectRoles  bool
 
 	OIDCIssuerURL    string
 	OIDCClientID     string
@@ -47,6 +50,8 @@ func ConfigFromEnv() (Config, error) {
 	switch modeRaw {
 	case string(ModeOIDC):
 		mode = ModeOIDC
+	case string(ModeSAML):
+		mode = ModeSAML
 	case string(ModeDev):
 		mode = ModeDev
 	case string(ModeDisabled):
@@ -63,6 +68,14 @@ func ConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	sessionMaxConcurrent, err := env.Int("AUTH_SESSION_MAX_CONCURRENT", 5)
+	if err != nil {
+		return Config{}, err
+	}
+	rbacAllowDirect, err := env.Bool("AUTH_RBAC_ALLOW_DIRECT_ROLES", true)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
 		Mode:                  mode,
@@ -72,6 +85,8 @@ func ConfigFromEnv() (Config, error) {
 		SessionCookieSecure:   sessionCookieSecure,
 		SessionCookieMaxAge:   time.Duration(maxAgeSeconds) * time.Second,
 		SessionCookieSameSite: env.String("AUTH_SESSION_COOKIE_SAMESITE", "Lax"),
+		SessionMaxConcurrent:  sessionMaxConcurrent,
+		RBACAllowDirectRoles:  rbacAllowDirect,
 		OIDCIssuerURL:         env.String("OIDC_ISSUER_URL", ""),
 		OIDCClientID:          env.String("OIDC_CLIENT_ID", ""),
 		OIDCClientSecret:      env.String("OIDC_CLIENT_SECRET", ""),
@@ -103,6 +118,9 @@ func (c Config) Validate() error {
 	if c.SessionCookieMaxAge <= 0 {
 		return errors.New("AUTH_SESSION_MAX_AGE_SECONDS must be positive")
 	}
+	if c.SessionMaxConcurrent < 0 {
+		return errors.New("AUTH_SESSION_MAX_CONCURRENT must be >= 0")
+	}
 	if strings.TrimSpace(c.SessionCookieSameSite) == "" {
 		return errors.New("AUTH_SESSION_COOKIE_SAMESITE is required")
 	}
@@ -115,6 +133,8 @@ func (c Config) Validate() error {
 		if strings.TrimSpace(c.OIDCClientID) == "" {
 			return errors.New("OIDC_CLIENT_ID is required when AUTH_MODE=oidc")
 		}
+	case ModeSAML:
+		// SAML is optional; handlers may be stubbed until configured.
 	case ModeDev:
 		if strings.TrimSpace(c.DevSubject) == "" {
 			return errors.New("DEV_AUTH_SUBJECT is required when AUTH_MODE=dev")

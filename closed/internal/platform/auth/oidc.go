@@ -21,9 +21,10 @@ type OIDCService struct {
 	provider     *oidc.Provider
 	verifier     *oidc.IDTokenVerifier
 	oauth2Config oauth2.Config
+	sessions     *SessionManager
 }
 
-func NewOIDCService(ctx context.Context, cfg Config) (*OIDCService, error) {
+func NewOIDCService(ctx context.Context, cfg Config, sessions *SessionManager) (*OIDCService, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -50,12 +51,28 @@ func NewOIDCService(ctx context.Context, cfg Config) (*OIDCService, error) {
 		provider:     provider,
 		verifier:     verifier,
 		oauth2Config: oauth2Cfg,
+		sessions:     sessions,
 	}, nil
 }
 
 func (s *OIDCService) Authenticate(ctx context.Context, r *http.Request) (Identity, error) {
 	rawToken := tokenFromHeader(r)
 	if rawToken == "" {
+		if s.sessions != nil {
+			sessionID := tokenFromCookie(r, s.cfg.SessionCookieName)
+			if sessionID == "" {
+				return Identity{}, ErrUnauthenticated
+			}
+			session, err := s.sessions.GetSession(ctx, sessionID)
+			if err != nil {
+				return Identity{}, ErrUnauthenticated
+			}
+			return Identity{
+				Subject: session.Subject,
+				Email:   session.Email,
+				Roles:   session.Roles,
+			}, nil
+		}
 		rawToken = tokenFromCookie(r, s.cfg.SessionCookieName)
 	}
 	if rawToken == "" {
@@ -184,7 +201,37 @@ func (s *OIDCService) CallbackHandler() (http.HandlerFunc, error) {
 			return
 		}
 
-		setSessionCookie(w, s.cfg.SessionCookieName, rawIDToken, s.cfg)
+		var claims map[string]any
+		if err := idToken.Claims(&claims); err != nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid_id_token_claims"})
+			return
+		}
+
+		sessionID := rawIDToken
+		if s.sessions != nil {
+			meta := SessionRequestMeta{
+				RequestID: r.Header.Get("X-Request-Id"),
+				UserAgent: r.UserAgent(),
+				RemoteIP:  ParseRemoteIP(r.RemoteAddr),
+				Actor:     extractSubjectClaim(claims),
+			}
+			expiresAt := time.Now().UTC().Add(s.cfg.SessionCookieMaxAge)
+			if !idToken.Expiry.IsZero() && idToken.Expiry.Before(expiresAt) {
+				expiresAt = idToken.Expiry.UTC()
+			}
+			session, err := s.sessions.CreateSession(r.Context(), Identity{
+				Subject: extractSubjectClaim(claims),
+				Email:   extractStringClaim(claims, s.cfg.EmailClaim),
+				Roles:   extractRolesClaim(claims, s.cfg.RolesClaim),
+			}, s.cfg.OIDCIssuerURL, expiresAt, TokenSHA256(rawIDToken), meta)
+			if err != nil {
+				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "session_create_failed"})
+				return
+			}
+			sessionID = session.SessionID
+		}
+
+		setSessionCookie(w, s.cfg.SessionCookieName, sessionID, s.cfg)
 		clearCookie(w, "animus_oidc_state", s.cfg)
 		clearCookie(w, "animus_oidc_verifier", s.cfg)
 		clearCookie(w, "animus_oidc_nonce", s.cfg)
@@ -196,6 +243,16 @@ func (s *OIDCService) CallbackHandler() (http.HandlerFunc, error) {
 
 func (s *OIDCService) LogoutHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if s.sessions != nil {
+			sessionID := tokenFromCookie(r, s.cfg.SessionCookieName)
+			if sessionID != "" {
+				_, _ = s.sessions.RevokeSession(r.Context(), sessionID, "user", "logout", SessionRequestMeta{
+					RequestID: r.Header.Get("X-Request-Id"),
+					UserAgent: r.UserAgent(),
+					RemoteIP:  ParseRemoteIP(r.RemoteAddr),
+				})
+			}
+		}
 		clearCookie(w, s.cfg.SessionCookieName, s.cfg)
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 	}
@@ -327,6 +384,15 @@ func parseSameSite(raw string) http.SameSite {
 
 func extractStringClaim(claims map[string]any, key string) string {
 	v, ok := claims[key]
+	if !ok {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
+}
+
+func extractSubjectClaim(claims map[string]any) string {
+	v, ok := claims["sub"]
 	if !ok {
 		return ""
 	}
