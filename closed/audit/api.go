@@ -41,16 +41,11 @@ func (api *auditAPI) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.exportCfg.Validate(); err != nil {
-		api.writeError(w, r, http.StatusNotImplemented, "export_not_configured")
-		return
+	format := strings.ToLower(strings.TrimSpace(api.exportCfg.Format))
+	if format == "" {
+		format = "ndjson"
 	}
-
-	if strings.ToLower(strings.TrimSpace(api.exportCfg.Destination)) != "http" {
-		api.writeError(w, r, http.StatusNotImplemented, "export_destination_unsupported")
-		return
-	}
-	if strings.ToLower(strings.TrimSpace(api.exportCfg.Format)) != "ndjson" {
+	if format != "ndjson" {
 		api.writeError(w, r, http.StatusNotImplemented, "export_format_unsupported")
 		return
 	}

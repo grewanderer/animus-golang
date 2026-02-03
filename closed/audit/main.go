@@ -33,7 +33,6 @@ func main() {
 		logger.Error("invalid env", "error", err)
 		os.Exit(2)
 	}
-
 	rbacAllowDirect, err := env.Bool("AUTH_RBAC_ALLOW_DIRECT_ROLES", true)
 	if err != nil {
 		logger.Error("invalid env", "error", err)
@@ -66,6 +65,30 @@ func main() {
 	}
 
 	auditAppender := repopg.NewAuditAppender(db, nil)
+	exportStore := repopg.NewAuditExportStore(db)
+	if exportStore == nil {
+		logger.Error("audit export store unavailable")
+		os.Exit(1)
+	}
+	if sink, err := auditexport.DefaultSinkFromConfig(exportCfg, time.Now().UTC()); err == nil {
+		if _, err := exportStore.UpsertSink(ctx, sink); err != nil {
+			logger.Error("audit export sink upsert failed", "error", err)
+			os.Exit(1)
+		}
+		if sink.Enabled {
+			if err := exportStore.BackfillOutbox(ctx, sink.SinkID); err != nil {
+				logger.Error("audit export backfill failed", "error", err)
+				os.Exit(1)
+			}
+		}
+	} else {
+		logger.Error("audit export sink config failed", "error", err)
+		os.Exit(2)
+	}
+	if exportCfg.Enabled() {
+		worker := auditexport.NewWorker(exportStore, auditAppender, logger, exportCfg)
+		go worker.Run(ctx)
+	}
 	authorizer := rbac.Authorizer{
 		Audit:       auditAppender,
 		AllowDirect: rbacAllowDirect,
