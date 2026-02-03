@@ -13,6 +13,8 @@ func TestCanTransitionRunState(t *testing.T) {
 		{"planned->running", RunStatePlanned, RunStateRunning, true},
 		{"running->succeeded", RunStateRunning, RunStateSucceeded, true},
 		{"succeeded->failed", RunStateSucceeded, RunStateFailed, false},
+		{"succeeded->running", RunStateSucceeded, RunStateRunning, false},
+		{"canceled->running", RunStateCanceled, RunStateRunning, false},
 		{"dryrun_succeeded->running", RunStateDryRunSucceeded, RunStateRunning, true},
 		{"failed->running", RunStateFailed, RunStateRunning, false},
 	}

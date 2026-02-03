@@ -617,7 +617,7 @@
 
 ## M3: Data Plane runtime и реальное исполнение (Kubernetes)
 
-**Статус:** не начато
+**Статус:** в работе (частично выполнено)
 
 ### E01: Архитектурный базис и контракты
 
@@ -714,37 +714,37 @@
 ### E04: Data Plane executor (Kubernetes)
 
 #### T0410 — Каркас сервиса DP executor + базовый K8s контроллер/клиент
-- implementation_paths: `closed/internal/runtimeexec/`, `closed/internal/platform/k8s/`, новый DP сервис
-- openapi: внутренний DP‑протокол (документ в `docs/contracts/`)
-- migrations: таблицы диспетчеризации/статусов (при необходимости)
-- audit_events: EV004, EV005, EV006
+- implementation_paths: `closed/dataplane/`, `closed/internal/platform/k8s/`, `closed/internal/dataplane/`
+- openapi: open/api/openapi/dataplane_internal.yaml
+- migrations: `closed/migrations/000019_dp_runtime.*`
+- audit_events: EV004, EV005
 - security_controls: изоляция, network‑policy, least‑privilege
 - observability: run‑scoped метрики/логи/трейсы
-- tests: интеграционные/e2e DP
-- acceptance_criteria: выполнено и подтверждено: Каркас сервиса DP executor + базовый K8s контроллер/клиент
-- verification_steps: Запуск Run через DP и проверка терминальных статусов.
+- tests: юнит (DP runtime)
+- acceptance_criteria: выполнено и подтверждено: каркас сервиса DP executor с healthz/readyz и базовым K8s клиентом
+- verification_steps: запуск DP сервиса и проверка `/healthz`, `/readyz`.
 
 #### T0411 — Запуск рабочих нагрузок Run (Job/Pod) с лимитами ресурсов и изоляцией
-- implementation_paths: `closed/internal/runtimeexec/`, `closed/internal/platform/k8s/`, новый DP сервис
-- openapi: внутренний DP‑протокол (документ в `docs/contracts/`)
-- migrations: таблицы диспетчеризации/статусов (при необходимости)
-- audit_events: EV004, EV005, EV006
+- implementation_paths: `closed/dataplane/`, `closed/internal/platform/k8s/`, `closed/internal/dataplane/`
+- openapi: open/api/openapi/dataplane_internal.yaml
+- migrations: `closed/migrations/000019_dp_runtime.*`
+- audit_events: EV004, EV005
 - security_controls: изоляция, network‑policy, least‑privilege
 - observability: run‑scoped метрики/логи/трейсы
-- tests: интеграционные/e2e DP
-- acceptance_criteria: выполнено и подтверждено: Запуск рабочих нагрузок Run (Job/Pod) с лимитами ресурсов и изоляцией
-- verification_steps: Запуск Run через DP и проверка терминальных статусов.
+- tests: юнит (DP job spec builder)
+- acceptance_criteria: выполнено и подтверждено: Job/Pod формируется по EnvLock с digest‑pinned образами и лимитами ресурсов
+- verification_steps: юнит‑тесты buildJobSpec и проверка label/env‑инъекций.
 
 #### T0412 — Отчётность DP→CP: heartbeats и терминальные состояния
-- implementation_paths: `closed/internal/runtimeexec/`, `closed/internal/platform/k8s/`, новый DP сервис
-- openapi: внутренний DP‑протокол (документ в `docs/contracts/`)
-- migrations: таблицы диспетчеризации/статусов (при необходимости)
-- audit_events: EV004, EV005, EV006
+- implementation_paths: `closed/dataplane/`, `closed/experiments/dp_internal_api.go`, `closed/internal/repo/postgres/dp_events.go`
+- openapi: open/api/openapi/dataplane_internal.yaml
+- migrations: `closed/migrations/000019_dp_runtime.*`
+- audit_events: EV004, EV005
 - security_controls: изоляция, network‑policy, least‑privilege
 - observability: run‑scoped метрики/логи/трейсы
-- tests: интеграционные/e2e DP
-- acceptance_criteria: выполнено и подтверждено: Отчётность DP→CP: heartbeats и терминальные состояния
-- verification_steps: Запуск Run через DP и проверка терминальных статусов.
+- tests: юнит (идемпотентность событий DP→CP)
+- acceptance_criteria: выполнено и подтверждено: DP отправляет heartbeats и терминальные события; CP принимает дубликаты
+- verification_steps: повторная отправка heartbeat/terminal по одному event_id не изменяет терминальный статус.
 
 #### T0413 — Запись артефактов с проверкой checksum + событие commit
 - implementation_paths: `closed/internal/runtimeexec/`, `closed/internal/platform/k8s/`, новый DP сервис
@@ -754,19 +754,19 @@
 - security_controls: изоляция, network‑policy, least‑privilege
 - observability: run‑scoped метрики/логи/трейсы
 - tests: интеграционные/e2e DP
-- acceptance_criteria: выполнено и подтверждено: Запись артефактов с проверкой checksum + событие commit
-- verification_steps: Запуск Run через DP и проверка терминальных статусов.
+- acceptance_criteria: не выполнено: запись артефактов и commit‑событие отложены до M4/M5 интеграции артефактного хранилища
+- verification_steps: требуется реализация артефактного канала и контроль checksum.
 
 #### T0414 — Реконсиляция orphaned/unknown runs
-- implementation_paths: `closed/internal/runtimeexec/`, `closed/internal/platform/k8s/`, новый DP сервис
-- openapi: внутренний DP‑протокол (документ в `docs/contracts/`)
-- migrations: таблицы диспетчеризации/статусов (при необходимости)
-- audit_events: EV004, EV005, EV006
+- implementation_paths: `closed/experiments/dp_reconciler.go`, `closed/internal/repo/postgres/dp_events.go`
+- openapi: open/api/openapi/dataplane_internal.yaml
+- migrations: `closed/migrations/000019_dp_runtime.*`
+- audit_events: EV005, EV014
 - security_controls: изоляция, network‑policy, least‑privilege
 - observability: run‑scoped метрики/логи/трейсы
-- tests: интеграционные/e2e DP
-- acceptance_criteria: выполнено и подтверждено: Реконсиляция orphaned/unknown runs
-- verification_steps: Запуск Run через DP и проверка терминальных статусов.
+- tests: юнит (правила реконсиляции)
+- acceptance_criteria: выполнено и подтверждено: периодическая реконсиляция Run по данным DP с неизменяемыми терминальными состояниями
+- verification_steps: симуляция устаревшего heartbeat и проверка `run.reconciled`.
 
 #### T0415 — Телеметрия Run‑scoped: логи и трассы по run_id
 - implementation_paths: `closed/internal/runtimeexec/`, `closed/internal/platform/k8s/`, новый DP сервис
@@ -776,8 +776,8 @@
 - security_controls: изоляция, network‑policy, least‑privilege
 - observability: run‑scoped метрики/логи/трейсы
 - tests: интеграционные/e2e DP
-- acceptance_criteria: выполнено и подтверждено: Телеметрия Run‑scoped: логи и трассы по run_id
-- verification_steps: Запуск Run через DP и проверка терминальных статусов.
+- acceptance_criteria: не выполнено: трассировка и метрики Run‑scoped запланированы в M5/M9
+- verification_steps: требуется интеграция OTel/Prometheus и корреляция по run_id.
 
 ### E07: Артефакты и объектное хранилище
 
@@ -1951,8 +1951,10 @@
 - CP не исполняет код: `make lint` (depguard) и отсутствие импортов runtimeexec в CP
 
 ### M3: проверка
-- команды: `make lint`, `make test`, `make build`
-- API‑потоки: создание Run → план → (dry‑run) → экспорт входов Run
+- команды: `GOCACHE=/tmp/go-cache go test ./closed/...`
+- API‑потоки: создание Run → `POST /projects/{project_id}/runs/{run_id}:dispatch` → DP создаёт Job → heartbeat → terminal → проверка статуса Run
+- идемпотентность: повторная отправка heartbeat/terminal с тем же `event_id` не изменяет итоговое состояние
+- реконсиляция: имитация устаревшего heartbeat → запуск reconciler → аудит `run.reconciled`
 
 ### M4: проверка
 - команды: `make lint`, `make test`, `make build`

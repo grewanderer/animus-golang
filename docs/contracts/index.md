@@ -32,6 +32,7 @@
 - DP→CP: `RunHeartbeat`, `RunTerminalState`, `ArtifactCommitted` (M3 — заглушка контракта).
 - `LogCursorUpdate` (опционально)
 - `DevEnvSessionHeartbeat` (если DevEnv включён)
+ - Реконсиляция: CP использует `RunExecutionStatus` для разрешения орфанных состояний; итог фиксируется аудитом `run.reconciled`.
 
 ### 2.3 Идемпотентность
 - Все сообщения DP→CP должны быть безопасно повторяемыми по `eventId`.
@@ -53,6 +54,7 @@
 - EV011 EnvironmentArchived
 - EV012 EnvironmentLocked
 - EV013 PolicySnapshotMaterialized
+- EV014 RunReconciled
 
 ### 3.2 Версионирование событий
 - События имеют стабильные идентификаторы EV###.

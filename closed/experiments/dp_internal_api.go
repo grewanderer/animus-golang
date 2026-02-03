@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/animus-labs/animus-go/closed/internal/dataplane"
 	"github.com/animus-labs/animus-go/closed/internal/domain"
-	"github.com/animus-labs/animus-go/closed/internal/platform/auditlog"
 	"github.com/animus-labs/animus-go/closed/internal/platform/auth"
 	"github.com/animus-labs/animus-go/closed/internal/repo"
 	"github.com/animus-labs/animus-go/closed/internal/repo/postgres"
@@ -457,7 +457,11 @@ func (api *experimentsAPI) handleDPArtifactCommitted(w http.ResponseWriter, r *h
 
 var errDPEventMismatch = errors.New("dp event mismatch")
 
-func ensureDPEventMatches(ctx context.Context, store *postgres.DPEventStore, eventID, runID, projectID, eventType string) error {
+type dpEventReader interface {
+	GetEvent(ctx context.Context, eventID string) (postgres.RunDPEventRecord, error)
+}
+
+func ensureDPEventMatches(ctx context.Context, store dpEventReader, eventID, runID, projectID, eventType string) error {
 	record, err := store.GetEvent(ctx, eventID)
 	if err != nil {
 		return err
