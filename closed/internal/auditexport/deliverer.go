@@ -116,9 +116,13 @@ func deliverSyslog(ctx context.Context, cfg SinkConfig, payload []byte) error {
 }
 
 func formatSyslogMessage(host, app string, payload []byte) string {
+	return formatSyslogMessageAt(host, app, payload, time.Now().UTC())
+}
+
+func formatSyslogMessageAt(host, app string, payload []byte, now time.Time) string {
 	const facilityUser = 1
 	const severityNotice = 5
 	pri := facilityUser*8 + severityNotice
-	ts := time.Now().UTC().Format(time.RFC3339Nano)
+	ts := now.UTC().Format(time.RFC3339Nano)
 	return fmt.Sprintf("<%d>1 %s %s %s - - - %s\n", pri, ts, host, app, string(payload))
 }
