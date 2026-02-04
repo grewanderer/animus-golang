@@ -61,7 +61,7 @@ func (s *AuditExportAttemptStore) Insert(ctx context.Context, attempt auditexpor
 		attempt.DeliveryID,
 		attempt.AttemptedAt.UTC(),
 		string(attempt.Outcome),
-		statusCodeOrNullInt(attempt.StatusCode),
+		statusCodeOrNull(attempt.StatusCode),
 		nullString(attempt.Error),
 		nullableInt(attempt.LatencyMs),
 		createdAt,
@@ -134,20 +134,6 @@ func scanAuditExportAttempt(row auditExportAttemptScanner) (auditexport.Delivery
 	}
 	record.CreatedAt = createdAt.UTC()
 	return record, nil
-}
-
-func statusCodeOrNullInt(value *int) sql.NullInt64 {
-	if value == nil {
-		return sql.NullInt64{}
-	}
-	return sql.NullInt64{Int64: int64(*value), Valid: true}
-}
-
-func nullableInt(value int) sql.NullInt64 {
-	if value == 0 {
-		return sql.NullInt64{}
-	}
-	return sql.NullInt64{Int64: int64(value), Valid: true}
 }
 
 var _ auditexport.AttemptStore = (*AuditExportAttemptStore)(nil)
