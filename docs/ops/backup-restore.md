@@ -1,0 +1,36 @@
+# Резервное копирование и восстановление
+
+## Цели (RPO/RTO)
+- RPO: 15–60 минут (зависит от частоты бэкапов).
+- RTO: 1–4 часа (зависит от объёма и скорости восстановления).
+
+## Построение бэкапа
+Используйте скрипт:
+```bash
+BACKUP_DIR=/secure/backups/$(date -u +%Y%m%dT%H%M%SZ) \
+DATABASE_URL="postgres://..." \
+ANIMUS_MINIO_ENDPOINT="s3.example" \
+ANIMUS_MINIO_ACCESS_KEY="..." \
+ANIMUS_MINIO_SECRET_KEY="..." \
+closed/scripts/backup.sh
+```
+Скрипт сохраняет:
+- дамп Postgres (`postgres/animus.dump`),
+- содержимое bucket‑ов MinIO/S3 (`minio/`),
+- `manifest.env` с контрольными метриками.
+
+## Восстановление
+```bash
+BACKUP_DIR=/secure/backups/<timestamp> \
+DATABASE_URL="postgres://..." \
+ANIMUS_MINIO_ENDPOINT="s3.example" \
+ANIMUS_MINIO_ACCESS_KEY="..." \
+ANIMUS_MINIO_SECRET_KEY="..." \
+closed/scripts/restore.sh
+```
+После восстановления запускается проверка (`verify-restore.sh`).
+
+## Рекомендации
+- Бэкап должен включать БД и объектное хранилище одновременно.
+- Проверяйте `manifest.env` для оценок целостности.
+- Планируйте регулярные тренировки восстановления (см. `docs/ops/dr-game-day.md`).
