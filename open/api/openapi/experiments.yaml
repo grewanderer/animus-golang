@@ -2826,6 +2826,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Registry verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/registry/verifications:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Список проверок целостности образов
+      parameters:
+        - name: image_digest_ref
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageVerificationListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /projects/{project_id}/environment-locks/{lock_id}:
     parameters:
       - name: project_id
@@ -4023,6 +4076,48 @@ components:
           type: string
         created:
           type: boolean
+    RegistryPolicyMode:
+      type: string
+      enum: [allow_unsigned, deny_unsigned, verify_only]
+    ImageVerificationRecord:
+      type: object
+      additionalProperties: false
+      required: [projectId, imageDigestRef, policyMode, provider, status, signed, verified, createdAt]
+      properties:
+        projectId:
+          type: string
+        imageDigestRef:
+          type: string
+        policyMode:
+          $ref: "#/components/schemas/RegistryPolicyMode"
+        provider:
+          type: string
+        status:
+          type: string
+        signed:
+          type: boolean
+        verified:
+          type: boolean
+        failureReason:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        verifiedAt:
+          type: string
+          format: date-time
+    ImageVerificationListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImageVerificationRecord"
     ProjectRunGetResponse:
       type: object
       additionalProperties: false

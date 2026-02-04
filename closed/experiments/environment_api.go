@@ -478,6 +478,19 @@ func (api *experimentsAPI) handleCreateEnvironmentLock(w http.ResponseWriter, r 
 		api.writeError(w, r, http.StatusBadRequest, "invalid_environment_lock")
 		return
 	}
+	allowed, reason, err := api.verifyRegistryImages(r.Context(), identity, projectID, lock.LockID, lock.Images, r.Header.Get("X-Request-Id"))
+	if err != nil {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if !allowed {
+		code := "registry_verification_failed"
+		if reason == registryBlockReasonUnsigned {
+			code = "registry_signature_required"
+		}
+		api.writeError(w, r, http.StatusUnprocessableEntity, code)
+		return
+	}
 	integrity, err := environmentLockIntegrity(lock, projectID, identity.Subject, now)
 	if err != nil {
 		api.writeError(w, r, http.StatusInternalServerError, "integrity_failed")
