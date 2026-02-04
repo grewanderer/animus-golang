@@ -16,6 +16,8 @@
 !/closed/deploy/**/*
 !/closed/scripts/
 !/closed/scripts/**/*
+!/closed/e2e/
+!/closed/e2e/**/*
 /closed/frontend_landing/
 /closed/frontend_landing/**
 

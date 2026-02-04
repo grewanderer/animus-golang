@@ -18,7 +18,7 @@ export GOCACHE := $(CACHE_DIR)/go-build
 export GOMODCACHE := $(CACHE_DIR)/go-mod
 export GOTMPDIR := $(CACHE_DIR)/go-tmp
 
-.PHONY: bootstrap fmt test lint build dev demo demo-smoke demo-down
+.PHONY: bootstrap fmt test lint build openapi-lint dev demo demo-smoke demo-down e2e sbom vuln-scan supply-chain helm-images
 
 bootstrap:
 	@mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(GOTMPDIR)"
@@ -66,7 +66,7 @@ lint:
 test:
 	@mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(GOTMPDIR)"
 	@echo "==> go test"
-	@$(GO) test $(GO_PACKAGES)
+	@./scripts/go_test.sh $(GO_PACKAGES)
 	@echo "==> python tests"
 	@if [ ! -d "$(PY_SDK_DIR)/tests" ]; then \
 		echo "Python SDK tests not found at $(PY_SDK_DIR)/tests."; \
@@ -84,6 +84,24 @@ build:
 	@mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(GOTMPDIR)"
 	@echo "==> go build"
 	@$(GO) build $(GO_PACKAGES)
+
+openapi-lint:
+	@./scripts/openapi_lint.sh
+
+helm-images:
+	@./scripts/list_images.sh
+
+sbom:
+	@./scripts/sbom.sh
+
+vuln-scan:
+	@./scripts/vuln_scan.sh
+
+supply-chain:
+	@./scripts/supply_chain.sh
+
+e2e:
+	@./scripts/e2e.sh
 
 dev:
 	@COMPOSE_BIN="$(COMPOSE_BIN)" ./closed/scripts/dev.sh

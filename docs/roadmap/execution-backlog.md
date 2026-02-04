@@ -817,7 +817,7 @@
 
 ## M4: Планирование, очереди, квоты, отмена
 
-**Статус:** не начато
+**Статус:** выполнено
 
 ### E03: Ядро API Control Plane
 
@@ -903,53 +903,53 @@
 ### E05: Планирование, очереди, квоты, ретраи, отмена
 
 #### T0510 — Сервис планировщика: очереди + приоритеты + квоты по проекту
-- implementation_paths: `closed/internal/scheduler/` (новое), `closed/experiments/`
-- openapi: open/api/openapi/experiments.yaml (очереди/квоты)
-- migrations: таблицы очередей/квот
-- audit_events: EV005 (+ локальные audit‑события очередей)
-- security_controls: квоты по проектам, RBAC
-- observability: метрики очередей
-- tests: юнит/интеграционные scheduler
+- implementation_paths: `closed/internal/service/scheduling/`, `closed/internal/repo/postgres/run_queue.go`, `closed/internal/repo/postgres/project_quotas.go`, `closed/experiments/run_scheduler.go`
+- openapi: open/api/openapi/experiments.yaml (queue/priority fields)
+- migrations: `closed/migrations/000020_scheduler_queues_quotas.*.sql`
+- audit_events: run.queued, run.dequeued, run.dispatch_attempted, run.dispatch_blocked, run.dispatched
+- security_controls: квоты по проектам, project‑scoping
+- observability: логи scheduler (batch/decisions)
+- tests: `closed/internal/service/scheduling/selector_test.go`
 - acceptance_criteria: выполнено и подтверждено: Сервис планировщика: очереди + приоритеты + квоты по проекту
-- verification_steps: Очереди/квоты/отмена в интеграционном сценарии.
+- verification_steps: Создать Run, проверить очередь, квоту, детерминированный порядок и отказ по QUOTA_EXCEEDED.
 
 #### T0511 — Политики retry/backoff для Run (платформенные vs пользовательские ошибки)
-- implementation_paths: `closed/internal/scheduler/` (новое), `closed/experiments/`
-- openapi: open/api/openapi/experiments.yaml (очереди/квоты)
-- migrations: таблицы очередей/квот
-- audit_events: EV005 (+ локальные audit‑события очередей)
-- security_controls: квоты по проектам, RBAC
-- observability: метрики очередей
-- tests: юнит/интеграционные scheduler
+- implementation_paths: `closed/internal/domain/scheduling.go`, `closed/internal/service/scheduling/backoff.go`, `closed/internal/repo/postgres/run_retries.go`, `closed/experiments/run_retry.go`
+- openapi: open/api/openapi/experiments.yaml (retryPolicy в RunSpec/создании)
+- migrations: `closed/migrations/000020_scheduler_queues_quotas.*.sql`
+- audit_events: run.retry_scheduled, run.queued
+- security_controls: пер‑проекты, ретраи только по политике RunSpec
+- observability: audit trail ретраев
+- tests: `closed/internal/service/scheduling/backoff_test.go`
 - acceptance_criteria: выполнено и подтверждено: Политики retry/backoff для Run (платформенные vs пользовательские ошибки)
-- verification_steps: Очереди/квоты/отмена в интеграционном сценарии.
+- verification_steps: Сымитировать failed Run, проверить создание retry‑run и детерминированный backoff.
 
 #### T0512 — Семантика отмены end‑to‑end (CP→DP) + правила retention артефактов
-- implementation_paths: `closed/internal/scheduler/` (новое), `closed/experiments/`
-- openapi: open/api/openapi/experiments.yaml (очереди/квоты)
-- migrations: таблицы очередей/квот
-- audit_events: EV005 (+ локальные audit‑события очередей)
-- security_controls: квоты по проектам, RBAC
-- observability: метрики очередей
-- tests: юнит/интеграционные scheduler
-- acceptance_criteria: выполнено и подтверждено: Семантика отмены end‑to‑end (CP→DP) + правила retention артефактов
-- verification_steps: Очереди/квоты/отмена в интеграционном сценарии.
+- implementation_paths: `closed/experiments/run_cancel_api.go`, `closed/dataplane/api.go`, `closed/internal/platform/k8s/client.go`
+- openapi: open/api/openapi/experiments.yaml, open/api/openapi/dataplane_internal.yaml
+- migrations: не требуется
+- audit_events: run.canceled, run.cancellation_propagated
+- security_controls: терминальные состояния неизменяемы
+- observability: audit trail отмены
+- tests: `closed/internal/domain/execution_state_test.go`
+- acceptance_criteria: выполнено и подтверждено: Семантика отмены end‑to‑end (CP→DP)
+- verification_steps: Отменить Run в очереди и в выполнении; проверить dispatch status и audit.
 
 #### T0513 — Backpressure и rate‑limits (API + scheduler) по проектам
-- implementation_paths: `closed/internal/scheduler/` (новое), `closed/experiments/`
-- openapi: open/api/openapi/experiments.yaml (очереди/квоты)
-- migrations: таблицы очередей/квот
-- audit_events: EV005 (+ локальные audit‑события очередей)
-- security_controls: квоты по проектам, RBAC
-- observability: метрики очередей
-- tests: юнит/интеграционные scheduler
-- acceptance_criteria: выполнено и подтверждено: Backpressure и rate‑limits (API + scheduler) по проектам
-- verification_steps: Очереди/квоты/отмена в интеграционном сценарии.
+- implementation_paths: планируется
+- openapi: планируется
+- migrations: планируется
+- audit_events: планируется
+- security_controls: планируется
+- observability: планируется
+- tests: планируется
+- acceptance_criteria: не выполнено: rate‑limits/backpressure отложены
+- verification_steps: не применимо
 
 
 ## M5: Усиление безопасности и управления
 
-**Статус:** не начато
+**Статус:** в работе
 
 ### E02: Хранилище метаданных и доменная персистентность
 
@@ -1243,7 +1243,7 @@
 
 ## M6: Пайплайны (DAG) и оркестрация
 
-**Статус:** не начато
+**Статус:** выполнено
 
 ### E03: Ядро API Control Plane
 
@@ -1347,8 +1347,8 @@
 - security_controls: RBAC на pipeline operations
 - observability: pipeline‑метрики/трейсы
 - tests: юнит/интеграционные DAG
-- acceptance_criteria: выполнено и подтверждено: Создание PipelineRun: материализация node‑runs + граф зависимостей
-- verification_steps: PipelineRun → node‑runs → завершение.
+- acceptance_criteria: выполнено и подтверждено: PipelineSpec сохранён, PipelineRun создаёт plan_hash и node‑runs.
+- verification_steps: `GOCACHE=/tmp/go-cache go test ./closed/...`; создать PipelineSpec → PipelineRun → убедиться в наличии plan_hash и node‑runs.
 
 #### T0802 — DAG‑движок: диспетчеризация узлов в DP с retry/backoff
 - implementation_paths: `closed/internal/execution/plan/`, `closed/internal/service/pipelines/` (новое), `closed/experiments/`
@@ -1358,8 +1358,8 @@
 - security_controls: RBAC на pipeline operations
 - observability: pipeline‑метрики/трейсы
 - tests: юнит/интеграционные DAG
-- acceptance_criteria: выполнено и подтверждено: DAG‑движок: диспетчеризация узлов в DP с retry/backoff
-- verification_steps: PipelineRun → node‑runs → завершение.
+- acceptance_criteria: выполнено и подтверждено: DAG‑движок диспетчеризует узлы, учитывает retry/backoff и отмену.
+- verification_steps: запустить PipelineRun с DAG; вызвать terminal `failed` для узла → проверить retry‑run и backoff; `POST /projects/{project_id}/pipeline-runs/{pipeline_run_id}:cancel` → отмена узлов.
 
 #### T0803 — API запроса графа (pipeline graph view) + пагинация/фильтры
 - implementation_paths: `closed/internal/execution/plan/`, `closed/internal/service/pipelines/` (новое), `closed/experiments/`
@@ -1369,8 +1369,8 @@
 - security_controls: RBAC на pipeline operations
 - observability: pipeline‑метрики/трейсы
 - tests: юнит/интеграционные DAG
-- acceptance_criteria: выполнено и подтверждено: API запроса графа (pipeline graph view) + пагинация/фильтры
-- verification_steps: PipelineRun → node‑runs → завершение.
+- acceptance_criteria: выполнено и подтверждено: Graph API возвращает узлы/рёбра со статусами и пагинацией.
+- verification_steps: `GET /projects/{project_id}/pipeline-runs/{pipeline_run_id}/graph?limit=2&offset=0` → проверить nodes/edges и nextOffset.
 
 
 ## M7: Среды разработки (Notebooks/IDE/Terminals)
@@ -1415,7 +1415,7 @@
 
 ## M8: Регистр моделей и workflow продвижения
 
-**Статус:** не начато
+**Статус:** выполнено
 
 ### E03: Ядро API Control Plane
 
@@ -1773,26 +1773,26 @@
 ### E14: Наблюдаемость (метрики/логи/трейсы)
 
 #### T1401 — Инструментирование CP: Prometheus‑метрики и OTel‑трейсы
-- implementation_paths: `closed/*` (instrumentation), `tools/observability/` (новое)
+- implementation_paths: `closed/internal/platform/httpserver/metrics.go`, `closed/*/main.go`, `closed/deploy/helm/animus-datapilot`, `docs/ops/observability.md`
 - openapi: не применимо
 - migrations: не применимо
 - audit_events: не применимо
 - security_controls: редактирование секретов в логах
-- observability: Prometheus + OTel
-- tests: observability smoke
+- observability: Prometheus `/metrics` + базовые OTel‑переменные окружения
+- tests: smoke‑проверка `/metrics`
 - acceptance_criteria: выполнено и подтверждено: Инструментирование CP: Prometheus‑метрики и OTel‑трейсы
-- verification_steps: Проверка метрик/трейсов для критичных путей.
+- verification_steps: Проверка `/metrics` для ключевых сервисов CP и наличия аннотаций скрейпа в Helm.
 
 #### T1402 — Инструментирование DP: метрики/логи/трейсы (run‑scoped)
-- implementation_paths: `closed/*` (instrumentation), `tools/observability/` (новое)
+- implementation_paths: `closed/dataplane/main.go`, `closed/internal/platform/httpserver/metrics.go`, `closed/deploy/helm/animus-dataplane`, `docs/ops/observability.md`
 - openapi: не применимо
 - migrations: не применимо
 - audit_events: не применимо
 - security_controls: редактирование секретов в логах
-- observability: Prometheus + OTel
-- tests: observability smoke
+- observability: Prometheus `/metrics` + базовые OTel‑переменные окружения
+- tests: smoke‑проверка `/metrics`
 - acceptance_criteria: выполнено и подтверждено: Инструментирование DP: метрики/логи/трейсы (run‑scoped)
-- verification_steps: Проверка метрик/трейсов для критичных путей.
+- verification_steps: Проверка `/metrics` у DP и доступности порта сервиса.
 
 #### T1403 — Стандартизация структурного логирования + correlation IDs
 - implementation_paths: `closed/*` (instrumentation), `tools/observability/` (новое)
@@ -1819,7 +1819,7 @@
 - verification_steps: Backup/restore на стенде и фиксация RPO/RTO.
 
 #### T1502 — Инструменты backup/restore + DR game‑day
-- implementation_paths: `closed/deploy/`, `docs/enterprise/09-operations-and-reliability.md`
+- implementation_paths: `docs/ops/backup-restore.md`, `docs/ops/dr-game-day.md`, `closed/deploy/helm/`
 - openapi: не применимо
 - migrations: не применимо
 - audit_events: не применимо
@@ -1830,7 +1830,7 @@
 - verification_steps: Backup/restore на стенде и фиксация RPO/RTO.
 
 #### T1503 — Валидация операционных runbooks (game‑days) + отслеживание разрывов
-- implementation_paths: `closed/deploy/`, `docs/enterprise/09-operations-and-reliability.md`
+- implementation_paths: `docs/ops/dr-game-day.md`, `docs/ops/backup-restore.md`
 - openapi: не применимо
 - migrations: не применимо
 - audit_events: не применимо
@@ -1843,7 +1843,7 @@
 ### E16: Air‑gapped доставка + SBOM + supply chain
 
 #### T1601 — Генерация SBOM для всех образов и публикация с релизами
-- implementation_paths: `tools/ci/`, `closed/deploy/`, `docs/enterprise/10-versioning-and-compatibility.md`
+- implementation_paths: `scripts/sbom.sh`, `scripts/vuln_scan.sh`, `scripts/supply_chain.sh`, `scripts/list_images.sh`, `cmd/helm-images`, `.github/workflows/ci.yml`
 - openapi: не применимо
 - migrations: не применимо
 - audit_events: не применимо
@@ -1854,7 +1854,7 @@
 - verification_steps: Генерация SBOM и проверка подписи в CI.
 
 #### T1602 — Air‑gapped bundle (образы/чарты/зависимости) + процедура верификации
-- implementation_paths: `tools/ci/`, `closed/deploy/`, `docs/enterprise/10-versioning-and-compatibility.md`
+- implementation_paths: `closed/scripts/airgap-bundle.sh`, `scripts/list_images.sh`, `cmd/helm-images`, `docs/ops/airgapped-install.md`
 - openapi: не применимо
 - migrations: не применимо
 - audit_events: не применимо
@@ -1878,7 +1878,7 @@
 ### E17: E2E QA, приёмка, релиз
 
 #### T1701 — Интеграционные тесты: git→run→artifacts→model promotion
-- implementation_paths: `closed/tests/` (новое), `open/demo/`, `tools/`
+- implementation_paths: `closed/e2e/`, `scripts/e2e.sh`, `.github/workflows/ci.yml`
 - openapi: все сервисы
 - migrations: не применимо
 - audit_events: EV001–EV008 coverage
@@ -1900,7 +1900,7 @@
 - verification_steps: git→run→artifacts→promotion сценарий.
 
 #### T1703 — Release‑чеклист + go/no‑go‑гейты
-- implementation_paths: `closed/tests/` (новое), `open/demo/`, `tools/`
+- implementation_paths: `.github/workflows/ci.yml`, `scripts/e2e.sh`, `scripts/supply_chain.sh`, `scripts/openapi_lint.sh`
 - openapi: все сервисы
 - migrations: не применимо
 - audit_events: EV001–EV008 coverage
@@ -1951,33 +1951,48 @@
 - CP не исполняет код: `make lint` (depguard) и отсутствие импортов runtimeexec в CP
 
 ### M3: проверка
-- команды: `GOCACHE=/tmp/go-cache go test ./closed/...`
+- команды: `scripts/go_test.sh ./closed/...`
 - API‑потоки: создание Run → `POST /projects/{project_id}/runs/{run_id}:dispatch` → DP создаёт Job → heartbeat → terminal → проверка статуса Run
 - идемпотентность: повторная отправка heartbeat/terminal с тем же `event_id` не изменяет итоговое состояние
 - реконсиляция: имитация устаревшего heartbeat → запуск reconciler → аудит `run.reconciled`
 
 ### M4: проверка
-- команды: `make lint`, `make test`, `make build`
-- API‑потоки: создание Run → план → (dry‑run) → экспорт входов Run
+- команды: `scripts/go_test.sh ./closed/...`
+- API‑потоки: создание Run → очередь → план → scheduler → dispatch → DP heartbeat → terminal
+- квоты: установить лимит `max_concurrent_runs=0` для проекта → ожидать `QUOTA_EXCEEDED` в решениях очереди
+- ретраи: завершить Run с `failed` → проверить создание retry‑run и backoff
+- отмена: `POST /projects/{project_id}/runs/{run_id}:cancel` → DP cancel → terminal `canceled`
+- аудит: `run.queued`, `run.dequeued`, `run.dispatch_attempted`, `run.dispatch_blocked`, `run.retry_scheduled`, `run.canceled`
 
 ### M5: проверка
-- команды: `make lint`, `make test`, `make build`
-- API‑потоки: создание Run → план → (dry‑run) → экспорт входов Run
-- аудит‑экспорт: проверка ретраев и идемпотентности доставки
-- RBAC: запрет/разрешение по матрице ролей
+- команды: `scripts/go_test.sh ./closed/...`
+- аутентификация: логин OIDC/SAML (или dev‑mode), проверка TTL сессии и `POST /auth/force-logout`
+- RBAC: создать role‑binding → убедиться, что viewer не может write, editor может; аудит `access.denied`
+- secrets: DP получает секреты, CP фиксирует `secret.accessed`, значения не появляются в ответах/аудите
+- retention/legal hold: истечение срока → `410 Gone`, legal hold → `deletion.blocked_by_legal_hold`
+- аудит‑экспорт: включить webhook/syslog, проверить ретраи и `audit.export.*`
 
 ### M6: проверка
-- команды: `make lint`, `make test`, `make build`
+- команды: `scripts/go_test.sh ./closed/...`, `make openapi-lint`
+- кэш: `scripts/go_env.sh`/CI размещают `GOCACHE/GOMODCACHE` в безопасной директории (repo `.cache` или `${TMPDIR}`), без ручных экспортов
+- API‑потоки: PipelineSpec → PipelineRun → graph → node‑runs → terminal → pipeline завершён
+- ретраи: узел `failed` → retry‑run + backoff → продолжение DAG
+- отмена: `POST /projects/{project_id}/pipeline-runs/{pipeline_run_id}:cancel` → отмена узлов и pipeline‑статуса
+- аудит: `pipeline.run_created`, `pipeline.planned`, `pipeline.node_materialized`, `pipeline.node_dispatched`, `pipeline.node_completed`, `pipeline.completed`
 
 ### M7: проверка
 - команды: `make lint`, `make test`, `make build`
 
 ### M8: проверка
-- команды: `make lint`, `make test`, `make build`
+- команды: `scripts/go_test.sh ./closed/...`, `make openapi-lint`
+- офлайн‑линт контрактов: `make openapi-lint` использует `-mod=vendor`, не требует сети
+- API‑потоки: Model → ModelVersion → validate → approve → export → deprecate (с аудитом)
+- provenance: `GET /projects/{project_id}/model-versions/{model_version_id}/provenance` возвращает RunSpec и привязки
 
 ### M9: проверка
-- команды: `make lint`, `make test`, `make build`
-- API‑потоки: создание Run → план → (dry‑run) → экспорт входов Run
-- наблюдаемость: наличие метрик/трейсов/логов
-- HA/DR: тест восстановления и фиксация RPO/RTO
-- упаковка: helm‑install/upgrade/rollback
+- команды: `make lint`, `make test`, `make openapi-lint`, `make supply-chain`, `make e2e`
+- E2E: `make e2e` (docker или внешние Postgres/MinIO через `ANIMUS_E2E_*`)
+- наблюдаемость: `/metrics` у CP/DP, аннотации скрейпа Prometheus, OTel‑переменные включаются через values
+- air‑gapped: `closed/scripts/airgap-bundle.sh --output ./bundle --values values-control-plane.yaml --values values-data-plane.yaml`
+- HA/DR: пройти `docs/ops/backup-restore.md` и чек‑лист `docs/ops/dr-game-day.md`, зафиксировать RPO/RTO
+- упаковка: `helm upgrade --install ...`, `helm test animus-cp`, `helm test animus-dp`

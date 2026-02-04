@@ -10,6 +10,10 @@ permissions:
 jobs:
   lint-test:
     runs-on: ubuntu-latest
+    env:
+      GOCACHE: ${{ runner.temp }}/go-build-cache
+      GOMODCACHE: ${{ runner.temp }}/go-mod-cache
+      GOTMPDIR: ${{ runner.temp }}/go-tmp
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -26,4 +30,39 @@ jobs:
           echo "${PWD}/.bin" >> "${GITHUB_PATH}"
           "${PWD}/.bin/golangci-lint" version
       - run: make lint
+      - run: make openapi-lint
       - run: make test
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    needs: lint-test
+    env:
+      GOCACHE: ${{ runner.temp }}/go-build-cache
+      GOMODCACHE: ${{ runner.temp }}/go-mod-cache
+      GOTMPDIR: ${{ runner.temp }}/go-tmp
+      VULN_FAIL_ON: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make supply-chain
+      - name: upload supply-chain reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: supply-chain-reports
+          path: .cache/supply-chain
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: lint-test
+    env:
+      GOCACHE: ${{ runner.temp }}/go-build-cache
+      GOMODCACHE: ${{ runner.temp }}/go-mod-cache
+      GOTMPDIR: ${{ runner.temp }}/go-tmp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make e2e
