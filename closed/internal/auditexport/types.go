@@ -94,9 +94,11 @@ type DeliveryAttempt struct {
 }
 
 type SinkConfig struct {
-	WebhookURL     string            `json:"webhook_url,omitempty"`
-	WebhookHeaders map[string]string `json:"webhook_headers,omitempty"`
-	SyslogAddr     string            `json:"syslog_addr,omitempty"`
-	SyslogProtocol string            `json:"syslog_protocol,omitempty"`
-	SyslogTag      string            `json:"syslog_tag,omitempty"`
+	WebhookURL        string            `json:"webhook_url,omitempty"`
+	WebhookHeaders    map[string]string `json:"webhook_headers,omitempty"`
+	WebhookSecretRef  string            `json:"webhook_secret_ref,omitempty"`
+	WebhookSigningKey string            `json:"webhook_signing_key,omitempty"`
+	SyslogAddr        string            `json:"syslog_addr,omitempty"`
+	SyslogProtocol    string            `json:"syslog_protocol,omitempty"`
+	SyslogTag         string            `json:"syslog_tag,omitempty"`
 }
