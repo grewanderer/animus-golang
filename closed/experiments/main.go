@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/animus-labs/animus-go/closed/internal/integrations/registryverify"
 	"github.com/animus-labs/animus-go/closed/internal/integrations/webhooks"
 	"github.com/animus-labs/animus-go/closed/internal/platform/auditlog"
 	"github.com/animus-labs/animus-go/closed/internal/platform/auth"
@@ -232,6 +233,19 @@ func main() {
 		logger.Error("invalid dp heartbeat stale after", "error", err)
 		os.Exit(2)
 	}
+	registryCfg, err := registryverify.ConfigFromEnv()
+	if err != nil {
+		logger.Error("invalid registry config", "error", err)
+		os.Exit(2)
+	}
+	registryPolicyResolver := registryverify.PolicyResolver{
+		Default: registryCfg.DefaultPolicy(),
+		Store:   repopg.NewRegistryPolicyStore(db),
+	}
+	registryProviders := map[string]registryverify.Provider{
+		registryverify.ProviderNoop:       registryverify.NoopProvider{},
+		registryverify.ProviderCosignStub: registryverify.CosignStubProvider{},
+	}
 
 	api := newExperimentsAPI(
 		logger,
@@ -247,6 +261,9 @@ func main() {
 		gitlabWebhookSecret,
 		trainingExec,
 		trainingNamespace,
+		registryPolicyResolver,
+		registryCfg.VerifyTimeout,
+		registryProviders,
 		webhookCfg,
 	)
 	api.register(mux)

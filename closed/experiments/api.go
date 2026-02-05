@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/animus-labs/animus-go/closed/internal/integrations/registryverify"
 	"github.com/animus-labs/animus-go/closed/internal/integrations/webhooks"
 	"github.com/animus-labs/animus-go/closed/internal/platform/auditlog"
 	"github.com/animus-labs/animus-go/closed/internal/platform/auth"
@@ -46,6 +47,11 @@ type experimentsAPI struct {
 	trainingNamespace string
 
 	webhookConfig webhooks.Config
+
+	registryPolicyResolver registryverify.PolicyResolver
+	registryVerifyTimeout  time.Duration
+	registryProviders      map[string]registryverify.Provider
+	registryStoreOverride  imageVerificationStore
 }
 
 func newExperimentsAPI(
@@ -62,24 +68,30 @@ func newExperimentsAPI(
 	gitlabWebhookSecret string,
 	trainingExecutor trainingExecutor,
 	trainingNamespace string,
+	registryPolicyResolver registryverify.PolicyResolver,
+	registryVerifyTimeout time.Duration,
+	registryProviders map[string]registryverify.Provider,
 	webhookConfig webhooks.Config,
 ) *experimentsAPI {
 	return &experimentsAPI{
-		logger:                logger,
-		db:                    db,
-		store:                 store,
-		storeCfg:              storeCfg,
-		ciWebhookSecret:       strings.TrimSpace(ciWebhookSecret),
-		ciWebhookMaxSkew:      5 * time.Minute,
-		runTokenSecret:        strings.TrimSpace(runTokenSecret),
-		runTokenTTL:           runTokenTTL,
-		datapilotURL:          strings.TrimSpace(datapilotURL),
-		dataplaneURL:          strings.TrimSpace(dataplaneURL),
-		evidenceSigningSecret: strings.TrimSpace(evidenceSigningSecret),
-		gitlabWebhookSecret:   strings.TrimSpace(gitlabWebhookSecret),
-		trainingExecutor:      trainingExecutor,
-		trainingNamespace:     strings.TrimSpace(trainingNamespace),
-		webhookConfig:         webhookConfig,
+		logger:                 logger,
+		db:                     db,
+		store:                  store,
+		storeCfg:               storeCfg,
+		ciWebhookSecret:        strings.TrimSpace(ciWebhookSecret),
+		ciWebhookMaxSkew:       5 * time.Minute,
+		runTokenSecret:         strings.TrimSpace(runTokenSecret),
+		runTokenTTL:            runTokenTTL,
+		datapilotURL:           strings.TrimSpace(datapilotURL),
+		dataplaneURL:           strings.TrimSpace(dataplaneURL),
+		evidenceSigningSecret:  strings.TrimSpace(evidenceSigningSecret),
+		gitlabWebhookSecret:    strings.TrimSpace(gitlabWebhookSecret),
+		trainingExecutor:       trainingExecutor,
+		trainingNamespace:      strings.TrimSpace(trainingNamespace),
+		webhookConfig:          webhookConfig,
+		registryPolicyResolver: registryPolicyResolver,
+		registryVerifyTimeout:  registryVerifyTimeout,
+		registryProviders:      registryProviders,
 	}
 }
 
