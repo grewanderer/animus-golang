@@ -48,6 +48,13 @@ type ModelFilter struct {
 	Limit     int
 }
 
+type ModelVersionFilter struct {
+	ProjectID string
+	ModelID   string
+	Status    domain.ModelStatus
+	Limit     int
+}
+
 type RunRecord struct {
 	ID             string
 	ProjectID      string
@@ -94,7 +101,6 @@ type SessionRecord struct {
 	IP            string
 	Metadata      domain.Metadata
 }
-
 
 type PlanRecord struct {
 	ID        string
@@ -155,10 +161,21 @@ type ArtifactRepository interface {
 
 // ModelRepository manages model registry entries.
 type ModelRepository interface {
-	CreateModel(ctx context.Context, model domain.Model) error
+	CreateModel(ctx context.Context, model domain.Model, idempotencyKey string) (domain.Model, bool, error)
 	GetModel(ctx context.Context, projectID, id string) (domain.Model, error)
 	ListModels(ctx context.Context, filter ModelFilter) ([]domain.Model, error)
 	UpdateModelStatus(ctx context.Context, projectID, id string, status domain.ModelStatus) error
+}
+
+type ModelVersionRepository interface {
+	Create(ctx context.Context, version domain.ModelVersion, idempotencyKey string) (domain.ModelVersion, bool, error)
+	Get(ctx context.Context, projectID, versionID string) (domain.ModelVersion, error)
+	List(ctx context.Context, filter ModelVersionFilter) ([]domain.ModelVersion, error)
+	UpdateStatus(ctx context.Context, projectID, versionID string, status domain.ModelStatus) error
+}
+
+type ModelExportRepository interface {
+	Create(ctx context.Context, export domain.ModelExport, idempotencyKey string) (domain.ModelExport, bool, error)
 }
 
 // PlanRepository stores deterministic execution plans for runs.
