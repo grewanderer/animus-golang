@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: 'Space Grotesk', Inter, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  --background: 217 68% 3%;
+  --foreground: 208 100% 97%;
+  --muted: 212 26% 15%;
+  --muted-foreground: 216 24% 72%;
+  --popover: 217 63% 4%;
+  --popover-foreground: 213 100% 96%;
+  --card: 217 63% 5%;
+  --card-foreground: 0 0% 100%;
+  --border: 215 27% 20%;
+  --input: 215 27% 20%;
+  --primary: 207 86% 61%;
+  --primary-foreground: 210 100% 98%;
+  --secondary: 199 70% 56%;
+  --secondary-foreground: 210 100% 96%;
+  --accent: 165 82% 60%;
+  --accent-foreground: 210 100% 5%;
+  --destructive: 0 90% 62%;
+  --destructive-foreground: 210 40% 98%;
+  --ring: 207 86% 61%;
+  --radius: 0.8rem;
+}
+
+:root[data-surface='ops'] {
+  --background: 210 60% 6%;
+  --card: 210 65% 9%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  background: #081018;
+  color: #e8f4ff;
+  font-family: var(--font-sans), 'Space Grotesk', 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial,
+    sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+}
+
+body {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html,
+  body {
+    scroll-behavior: auto;
+  }
+}
+
+body[data-surface='ops'] {
+  background: #040910;
+}
+
+@layer components {
+  .console-surface {
+    @apply bg-card text-card-foreground border border-border rounded-lg;
+  }
+
+  .console-section-title {
+    @apply text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground;
+  }
+
+  .console-kicker {
+    @apply text-xs uppercase tracking-[0.24em] text-muted-foreground;
+  }
+
+  .console-divider {
+    @apply border-t border-border/80;
+  }
+
+  .console-table {
+    @apply w-full text-sm border-collapse;
+  }
+
+  .console-table th {
+    @apply sticky top-0 bg-card text-left text-xs uppercase tracking-[0.2em] text-muted-foreground py-3 px-3 border-b border-border;
+  }
+
+  .console-table td {
+    @apply py-3 px-3 border-b border-border/60 align-top;
+  }
+
+  .console-pill {
+    @apply inline-flex items-center gap-2 rounded-full border border-border/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em];
+  }
+}

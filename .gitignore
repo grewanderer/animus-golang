@@ -22,6 +22,8 @@
 !/closed/e2e/**/*
 /closed/frontend_landing/
 /closed/frontend_landing/**
+!/closed/frontend_console/
+!/closed/frontend_console/**/*
 
 # Next.js build output
 .next/
