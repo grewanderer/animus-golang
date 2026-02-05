@@ -52,6 +52,16 @@ type experimentsAPI struct {
 	registryVerifyTimeout  time.Duration
 	registryProviders      map[string]registryverify.Provider
 	registryStoreOverride  imageVerificationStore
+
+	devEnvDefaultTTL             time.Duration
+	devEnvAccessTTL              time.Duration
+	devEnvStoreOverride          devEnvironmentStore
+	devEnvPolicyStoreOverride    devEnvPolicyStore
+	devEnvSessionStoreOverride   devEnvSessionStore
+	devEnvDPClientOverride       devEnvDataplaneClient
+	devEnvAuditOverride          devEnvAuditAppender
+	environmentStoreOverride     environmentStore
+	devEnvPolicySnapshotOverride devEnvPolicySnapshotBuilder
 }
 
 func newExperimentsAPI(
@@ -72,6 +82,8 @@ func newExperimentsAPI(
 	registryVerifyTimeout time.Duration,
 	registryProviders map[string]registryverify.Provider,
 	webhookConfig webhooks.Config,
+	devEnvDefaultTTL time.Duration,
+	devEnvAccessTTL time.Duration,
 ) *experimentsAPI {
 	return &experimentsAPI{
 		logger:                 logger,
@@ -92,6 +104,8 @@ func newExperimentsAPI(
 		registryPolicyResolver: registryPolicyResolver,
 		registryVerifyTimeout:  registryVerifyTimeout,
 		registryProviders:      registryProviders,
+		devEnvDefaultTTL:       devEnvDefaultTTL,
+		devEnvAccessTTL:        devEnvAccessTTL,
 	}
 }
 
@@ -121,6 +135,11 @@ func (api *experimentsAPI) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /projects/{project_id}/environment-locks", api.handleCreateEnvironmentLock)
 	mux.HandleFunc("GET /projects/{project_id}/environment-locks", api.handleListEnvironmentLocks)
 	mux.HandleFunc("GET /projects/{project_id}/environment-locks/{lock_id}", api.handleGetEnvironmentLock)
+	mux.HandleFunc("POST /projects/{project_id}/dev-environments", api.handleCreateDevEnvironment)
+	mux.HandleFunc("GET /projects/{project_id}/dev-environments", api.handleListDevEnvironments)
+	mux.HandleFunc("GET /projects/{project_id}/dev-environments/{dev_env_id}", api.handleGetDevEnvironment)
+	mux.HandleFunc("POST /projects/{project_id}/dev-environments/{dev_env_id}:access", api.handleAccessDevEnvironment)
+	mux.HandleFunc("POST /projects/{project_id}/dev-environments/{dev_env_id}:stop", api.handleStopDevEnvironment)
 	mux.HandleFunc("POST /projects/{project_id}/webhooks/subscriptions", api.handleCreateWebhookSubscription)
 	mux.HandleFunc("GET /projects/{project_id}/webhooks/subscriptions", api.handleListWebhookSubscriptions)
 	mux.HandleFunc("PATCH /projects/{project_id}/webhooks/subscriptions/{subscription_id}", api.handleUpdateWebhookSubscription)

@@ -63,6 +63,36 @@ func (c *dataplaneClient) GetRunStatus(ctx context.Context, projectID, runID, re
 	return resp, status, err
 }
 
+func (c *dataplaneClient) ProvisionDevEnv(ctx context.Context, req dataplane.DevEnvProvisionRequest, requestID string) (dataplane.DevEnvProvisionResponse, int, error) {
+	if c == nil {
+		return dataplane.DevEnvProvisionResponse{}, 0, errors.New("dataplane client not initialized")
+	}
+	path := fmt.Sprintf("/internal/dp/dev-envs/%s:create", strings.TrimSpace(req.DevEnvID))
+	var resp dataplane.DevEnvProvisionResponse
+	status, err := c.postJSON(ctx, path, req, requestID, &resp)
+	return resp, status, err
+}
+
+func (c *dataplaneClient) DeleteDevEnv(ctx context.Context, req dataplane.DevEnvDeleteRequest, requestID string) (dataplane.DevEnvDeleteResponse, int, error) {
+	if c == nil {
+		return dataplane.DevEnvDeleteResponse{}, 0, errors.New("dataplane client not initialized")
+	}
+	path := fmt.Sprintf("/internal/dp/dev-envs/%s:delete", strings.TrimSpace(req.DevEnvID))
+	var resp dataplane.DevEnvDeleteResponse
+	status, err := c.postJSON(ctx, path, req, requestID, &resp)
+	return resp, status, err
+}
+
+func (c *dataplaneClient) AccessDevEnv(ctx context.Context, req dataplane.DevEnvAccessRequest, requestID string) (dataplane.DevEnvAccessResponse, int, error) {
+	if c == nil {
+		return dataplane.DevEnvAccessResponse{}, 0, errors.New("dataplane client not initialized")
+	}
+	path := fmt.Sprintf("/internal/dp/dev-envs/%s/access", strings.TrimSpace(req.DevEnvID))
+	var resp dataplane.DevEnvAccessResponse
+	status, err := c.postJSON(ctx, path, req, requestID, &resp)
+	return resp, status, err
+}
+
 func (c *dataplaneClient) postJSON(ctx context.Context, path string, payload any, requestID string, out any) (int, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {

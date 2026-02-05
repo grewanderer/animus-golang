@@ -122,6 +122,21 @@ func main() {
 		logger.Error("invalid run token ttl", "error", err)
 		os.Exit(2)
 	}
+	devEnvDefaultTTL, err := env.Duration("ANIMUS_DEVENV_TTL", 2*time.Hour)
+	if err != nil {
+		logger.Error("invalid devenv ttl", "error", err)
+		os.Exit(2)
+	}
+	devEnvAccessTTL, err := env.Duration("ANIMUS_DEVENV_ACCESS_TTL", 15*time.Minute)
+	if err != nil {
+		logger.Error("invalid devenv access ttl", "error", err)
+		os.Exit(2)
+	}
+	devEnvReconcileInterval, err := env.Duration("ANIMUS_DEVENV_RECONCILE_INTERVAL", 30*time.Second)
+	if err != nil {
+		logger.Error("invalid devenv reconcile interval", "error", err)
+		os.Exit(2)
+	}
 
 	syncInterval, err := env.Duration("ANIMUS_TRAINING_SYNC_INTERVAL", 5*time.Second)
 	if err != nil {
@@ -265,6 +280,8 @@ func main() {
 		registryCfg.VerifyTimeout,
 		registryProviders,
 		webhookCfg,
+		devEnvDefaultTTL,
+		devEnvAccessTTL,
 	)
 	api.register(mux)
 
@@ -279,6 +296,7 @@ func main() {
 		DatapilotURL:          datapilotURL,
 	})
 	startDPReconciler(ctx, logger, db, dataplaneURL, internalAuthSecret, dpReconcileInterval, dpHeartbeatStaleAfter)
+	startDevEnvReconciler(ctx, logger, db, dataplaneURL, internalAuthSecret, devEnvReconcileInterval)
 	webhookWorker := webhooks.NewWorker(
 		repopg.NewWebhookSubscriptionStore(db),
 		repopg.NewWebhookDeliveryStore(db),
