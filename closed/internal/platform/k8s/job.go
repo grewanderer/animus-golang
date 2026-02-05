@@ -41,6 +41,7 @@ type PodTemplateSpec struct {
 type JobSpec struct {
 	BackoffLimit            *int32          `json:"backoffLimit,omitempty"`
 	TTLSecondsAfterFinished *int32          `json:"ttlSecondsAfterFinished,omitempty"`
+	ActiveDeadlineSeconds   *int64          `json:"activeDeadlineSeconds,omitempty"`
 	Template                PodTemplateSpec `json:"template"`
 }
 

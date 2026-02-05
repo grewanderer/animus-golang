@@ -152,6 +152,23 @@ func (c *Client) GetJob(ctx context.Context, namespace string, name string) (Job
 	return out, nil
 }
 
+func (c *Client) DeleteJob(ctx context.Context, namespace string, name string) error {
+	namespace = strings.TrimSpace(namespace)
+	if namespace == "" {
+		namespace = c.namespace
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("job name is required")
+	}
+	path := fmt.Sprintf("/apis/batch/v1/namespaces/%s/jobs/%s", namespace, name)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+path, nil)
+	if err != nil {
+		return err
+	}
+	return c.do(req, nil)
+}
+
 func (c *Client) do(req *http.Request, out any) error {
 	if req == nil {
 		return errors.New("request is required")
@@ -171,7 +188,7 @@ func (c *Client) do(req *http.Request, out any) error {
 	}
 
 	switch resp.StatusCode {
-	case http.StatusOK, http.StatusCreated:
+	case http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent:
 		if out == nil {
 			return nil
 		}

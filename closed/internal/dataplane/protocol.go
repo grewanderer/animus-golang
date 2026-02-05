@@ -1,6 +1,10 @@
 package dataplane
 
-import "time"
+import (
+	"time"
+
+	"github.com/animus-labs/animus-go/closed/internal/domain"
+)
 
 const (
 	EventTypeHeartbeat         = "heartbeat"
@@ -48,6 +52,65 @@ type RunExecutionStatus struct {
 	StartedAt  *time.Time `json:"startedAt,omitempty"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 	Reason     string     `json:"reason,omitempty"`
+}
+
+type DevEnvProvisionRequest struct {
+	DevEnvID             string                      `json:"devEnvId"`
+	ProjectID            string                      `json:"projectId"`
+	TemplateRef          string                      `json:"templateRef"`
+	TemplateVersion      int                         `json:"templateVersion,omitempty"`
+	TemplateIntegritySHA string                      `json:"templateIntegritySha256,omitempty"`
+	ImageName            string                      `json:"imageName,omitempty"`
+	ImageRef             string                      `json:"imageRef"`
+	ResourceDefaults     domain.EnvironmentResources `json:"resourceDefaults,omitempty"`
+	ResourceLimits       domain.EnvironmentResources `json:"resourceLimits,omitempty"`
+	NetworkClassRef      string                      `json:"networkClassRef,omitempty"`
+	SecretAccessClassRef string                      `json:"secretAccessClassRef,omitempty"`
+	TTLSeconds           int64                       `json:"ttlSeconds"`
+	EmittedAt            time.Time                   `json:"emittedAt"`
+	RequestedBy          string                      `json:"requestedBy,omitempty"`
+	CorrelationID        string                      `json:"correlationId,omitempty"`
+}
+
+type DevEnvProvisionResponse struct {
+	DevEnvID  string `json:"devEnvId"`
+	ProjectID string `json:"projectId"`
+	Accepted  bool   `json:"accepted"`
+	JobName   string `json:"jobName,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	Message   string `json:"message,omitempty"`
+}
+
+type DevEnvAccessRequest struct {
+	DevEnvID      string    `json:"devEnvId"`
+	ProjectID     string    `json:"projectId"`
+	SessionID     string    `json:"sessionId"`
+	EmittedAt     time.Time `json:"emittedAt"`
+	CorrelationID string    `json:"correlationId,omitempty"`
+}
+
+type DevEnvAccessResponse struct {
+	DevEnvID  string `json:"devEnvId"`
+	ProjectID string `json:"projectId"`
+	Ready     bool   `json:"ready"`
+	JobName   string `json:"jobName,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	Message   string `json:"message,omitempty"`
+}
+
+type DevEnvDeleteRequest struct {
+	DevEnvID      string    `json:"devEnvId"`
+	ProjectID     string    `json:"projectId"`
+	EmittedAt     time.Time `json:"emittedAt"`
+	RequestedBy   string    `json:"requestedBy,omitempty"`
+	CorrelationID string    `json:"correlationId,omitempty"`
+}
+
+type DevEnvDeleteResponse struct {
+	DevEnvID  string `json:"devEnvId"`
+	ProjectID string `json:"projectId"`
+	Deleted   bool   `json:"deleted"`
+	Message   string `json:"message,omitempty"`
 }
 
 type RunHeartbeat struct {

@@ -56,6 +56,13 @@ func main() {
 		os.Exit(2)
 	}
 	jobServiceAccount := env.String("ANIMUS_DATAPLANE_JOB_SERVICE_ACCOUNT", "")
+	devEnvNamespace := env.String("ANIMUS_DEVENV_K8S_NAMESPACE", "")
+	devEnvServiceAccount := env.String("ANIMUS_DEVENV_K8S_SERVICE_ACCOUNT", "")
+	devEnvTTLAfterFinished, err := env.Int("ANIMUS_DEVENV_JOB_TTL_AFTER_FINISHED", 300)
+	if err != nil {
+		logger.Error("invalid dev env ttl after finished", "error", err)
+		os.Exit(2)
+	}
 	heartbeatInterval, err := env.Duration("ANIMUS_DATAPLANE_HEARTBEAT_INTERVAL", 15*time.Second)
 	if err != nil {
 		logger.Error("invalid heartbeat interval", "error", err)
@@ -90,12 +97,15 @@ func main() {
 	}
 
 	api := newDataplaneAPI(logger, cpClient, client, dataplaneConfig{
-		Namespace:         namespace,
-		JobTTLSeconds:     int32(jobTTLSeconds),
-		JobServiceAccount: jobServiceAccount,
-		HeartbeatInterval: heartbeatInterval,
-		PollInterval:      pollInterval,
-		EgressMode:        egressMode,
+		Namespace:                     namespace,
+		JobTTLSeconds:                 int32(jobTTLSeconds),
+		JobServiceAccount:             jobServiceAccount,
+		DevEnvNamespace:               devEnvNamespace,
+		DevEnvServiceAccount:          devEnvServiceAccount,
+		DevEnvTTLAfterFinishedSeconds: int32(devEnvTTLAfterFinished),
+		HeartbeatInterval:             heartbeatInterval,
+		PollInterval:                  pollInterval,
+		EgressMode:                    egressMode,
 	}, secretsManager)
 
 	mux := http.NewServeMux()

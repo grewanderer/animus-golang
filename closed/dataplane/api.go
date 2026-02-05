@@ -18,12 +18,15 @@ import (
 )
 
 type dataplaneConfig struct {
-	Namespace         string
-	JobTTLSeconds     int32
-	JobServiceAccount string
-	HeartbeatInterval time.Duration
-	PollInterval      time.Duration
-	EgressMode        string
+	Namespace                     string
+	JobTTLSeconds                 int32
+	JobServiceAccount             string
+	DevEnvNamespace               string
+	DevEnvServiceAccount          string
+	DevEnvTTLAfterFinishedSeconds int32
+	HeartbeatInterval             time.Duration
+	PollInterval                  time.Duration
+	EgressMode                    string
 }
 
 type dataplaneAPI struct {
@@ -44,6 +47,9 @@ func newDataplaneAPI(logger *slog.Logger, cp *controlPlaneClient, k8sClient *k8s
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = 10 * time.Second
 	}
+	if cfg.DevEnvTTLAfterFinishedSeconds < 0 {
+		cfg.DevEnvTTLAfterFinishedSeconds = 0
+	}
 	return &dataplaneAPI{
 		logger:   logger,
 		cp:       cp,
@@ -57,6 +63,9 @@ func newDataplaneAPI(logger *slog.Logger, cp *controlPlaneClient, k8sClient *k8s
 func (api *dataplaneAPI) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/dp/runs/{run_id}:execute", api.handleExecuteRun)
 	mux.HandleFunc("GET /internal/dp/runs/{run_id}/status", api.handleGetRunStatus)
+	mux.HandleFunc("POST /internal/dp/dev-envs/{dev_env_id}:create", api.handleCreateDevEnv)
+	mux.HandleFunc("POST /internal/dp/dev-envs/{dev_env_id}:delete", api.handleDeleteDevEnv)
+	mux.HandleFunc("POST /internal/dp/dev-envs/{dev_env_id}/access", api.handleAccessDevEnv)
 }
 
 func (api *dataplaneAPI) handleExecuteRun(w http.ResponseWriter, r *http.Request) {
