@@ -124,6 +124,168 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /internal/dp/dev-envs/{dev_env_id}:create:
+    post:
+      tags: [dataplane]
+      summary: Создать DevEnvironment в DP
+      parameters:
+        - name: dev_env_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevEnvProvisionRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevEnvProvisionResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/dp/dev-envs/{dev_env_id}:delete:
+    post:
+      tags: [dataplane]
+      summary: Удалить DevEnvironment в DP
+      parameters:
+        - name: dev_env_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevEnvDeleteRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevEnvDeleteResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/dp/dev-envs/{dev_env_id}/access:
+    post:
+      tags: [dataplane]
+      summary: Получить доступ к DevEnvironment в DP
+      parameters:
+        - name: dev_env_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevEnvAccessRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevEnvAccessResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /internal/cp/runs/{run_id}/heartbeat:
     post:
       tags: [control-plane]
@@ -405,6 +567,131 @@ components:
           type: string
           format: date-time
         reason:
+          type: string
+    EnvironmentResources:
+      type: object
+      additionalProperties: false
+      properties:
+        cpu:
+          type: string
+        memory:
+          type: string
+        gpu:
+          type: integer
+    DevEnvProvisionRequest:
+      type: object
+      additionalProperties: false
+      required: [devEnvId, projectId, templateRef, imageRef, ttlSeconds, emittedAt]
+      properties:
+        devEnvId:
+          type: string
+        projectId:
+          type: string
+        templateRef:
+          type: string
+        templateVersion:
+          type: integer
+        templateIntegritySha256:
+          type: string
+        imageName:
+          type: string
+        imageRef:
+          type: string
+        resourceDefaults:
+          $ref: "#/components/schemas/EnvironmentResources"
+        resourceLimits:
+          $ref: "#/components/schemas/EnvironmentResources"
+        networkClassRef:
+          type: string
+        secretAccessClassRef:
+          type: string
+        ttlSeconds:
+          type: integer
+        emittedAt:
+          type: string
+          format: date-time
+        requestedBy:
+          type: string
+        correlationId:
+          type: string
+    DevEnvProvisionResponse:
+      type: object
+      additionalProperties: false
+      required: [devEnvId, projectId, accepted]
+      properties:
+        devEnvId:
+          type: string
+        projectId:
+          type: string
+        accepted:
+          type: boolean
+        jobName:
+          type: string
+        namespace:
+          type: string
+        message:
+          type: string
+    DevEnvAccessRequest:
+      type: object
+      additionalProperties: false
+      required: [devEnvId, projectId, sessionId, emittedAt]
+      properties:
+        devEnvId:
+          type: string
+        projectId:
+          type: string
+        sessionId:
+          type: string
+        emittedAt:
+          type: string
+          format: date-time
+        correlationId:
+          type: string
+    DevEnvAccessResponse:
+      type: object
+      additionalProperties: false
+      required: [devEnvId, projectId, ready]
+      properties:
+        devEnvId:
+          type: string
+        projectId:
+          type: string
+        ready:
+          type: boolean
+        jobName:
+          type: string
+        namespace:
+          type: string
+        message:
+          type: string
+    DevEnvDeleteRequest:
+      type: object
+      additionalProperties: false
+      required: [devEnvId, projectId, emittedAt]
+      properties:
+        devEnvId:
+          type: string
+        projectId:
+          type: string
+        emittedAt:
+          type: string
+          format: date-time
+        requestedBy:
+          type: string
+        correlationId:
+          type: string
+    DevEnvDeleteResponse:
+      type: object
+      additionalProperties: false
+      required: [devEnvId, projectId, deleted]
+      properties:
+        devEnvId:
+          type: string
+        projectId:
+          type: string
+        deleted:
+          type: boolean
+        message:
           type: string
     RunHeartbeat:
       type: object
