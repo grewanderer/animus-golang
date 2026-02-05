@@ -30,6 +30,10 @@ const (
 			template_ref,
 			template_version,
 			template_integrity_sha256,
+			repo_url,
+			ref_type,
+			ref_value,
+			commit_pin,
 			image_name,
 			image_ref,
 			ttl_seconds,
@@ -43,32 +47,37 @@ const (
 			dp_namespace,
 			idempotency_key,
 			integrity_sha256
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
 		ON CONFLICT (project_id, idempotency_key) DO NOTHING
 		RETURNING dev_env_id, project_id, template_ref, template_version, template_integrity_sha256,
-			image_name, image_ref, ttl_seconds, state, created_at, created_by, last_access_at,
-			expires_at, policy_snapshot_sha256, dp_job_name, dp_namespace, idempotency_key, integrity_sha256`
+			repo_url, ref_type, ref_value, commit_pin, image_name, image_ref, ttl_seconds, state,
+			created_at, created_by, last_access_at, expires_at, policy_snapshot_sha256, dp_job_name,
+			dp_namespace, idempotency_key, integrity_sha256`
 	selectDevEnvironmentByIDQuery = `SELECT dev_env_id, project_id, template_ref, template_version, template_integrity_sha256,
-			image_name, image_ref, ttl_seconds, state, created_at, created_by, last_access_at,
-			expires_at, policy_snapshot_sha256, dp_job_name, dp_namespace, idempotency_key, integrity_sha256
+			repo_url, ref_type, ref_value, commit_pin, image_name, image_ref, ttl_seconds, state,
+			created_at, created_by, last_access_at, expires_at, policy_snapshot_sha256, dp_job_name,
+			dp_namespace, idempotency_key, integrity_sha256
 		FROM dev_environments
 		WHERE project_id = $1 AND dev_env_id = $2`
 	selectDevEnvironmentByIdempotencyQuery = `SELECT dev_env_id, project_id, template_ref, template_version, template_integrity_sha256,
-			image_name, image_ref, ttl_seconds, state, created_at, created_by, last_access_at,
-			expires_at, policy_snapshot_sha256, dp_job_name, dp_namespace, idempotency_key, integrity_sha256
+			repo_url, ref_type, ref_value, commit_pin, image_name, image_ref, ttl_seconds, state,
+			created_at, created_by, last_access_at, expires_at, policy_snapshot_sha256, dp_job_name,
+			dp_namespace, idempotency_key, integrity_sha256
 		FROM dev_environments
 		WHERE project_id = $1 AND idempotency_key = $2`
 	selectDevEnvironmentListQuery = `SELECT dev_env_id, project_id, template_ref, template_version, template_integrity_sha256,
-			image_name, image_ref, ttl_seconds, state, created_at, created_by, last_access_at,
-			expires_at, policy_snapshot_sha256, dp_job_name, dp_namespace, idempotency_key, integrity_sha256
+			repo_url, ref_type, ref_value, commit_pin, image_name, image_ref, ttl_seconds, state,
+			created_at, created_by, last_access_at, expires_at, policy_snapshot_sha256, dp_job_name,
+			dp_namespace, idempotency_key, integrity_sha256
 		FROM dev_environments
 		WHERE project_id = $1
 			AND ($2 = '' OR state = $2)
 		ORDER BY created_at DESC
 		LIMIT $3`
 	selectDevEnvironmentExpiredQuery = `SELECT dev_env_id, project_id, template_ref, template_version, template_integrity_sha256,
-			image_name, image_ref, ttl_seconds, state, created_at, created_by, last_access_at,
-			expires_at, policy_snapshot_sha256, dp_job_name, dp_namespace, idempotency_key, integrity_sha256
+			repo_url, ref_type, ref_value, commit_pin, image_name, image_ref, ttl_seconds, state,
+			created_at, created_by, last_access_at, expires_at, policy_snapshot_sha256, dp_job_name,
+			dp_namespace, idempotency_key, integrity_sha256
 		FROM dev_environments
 		WHERE project_id = $1
 			AND state IN ('provisioning', 'active')
@@ -196,6 +205,7 @@ func (s *DevEnvironmentStore) Create(ctx context.Context, env domain.DevEnvironm
 	if env.LastAccessAt != nil && !env.LastAccessAt.IsZero() {
 		lastAccessAt = sql.NullTime{Time: env.LastAccessAt.UTC(), Valid: true}
 	}
+	var commitPin sql.NullString
 	err := s.db.QueryRowContext(
 		ctx,
 		insertDevEnvironmentQuery,
@@ -204,6 +214,10 @@ func (s *DevEnvironmentStore) Create(ctx context.Context, env domain.DevEnvironm
 		env.TemplateRef,
 		env.TemplateDefinitionVersion,
 		env.TemplateIntegritySHA256,
+		strings.TrimSpace(env.RepoURL),
+		strings.TrimSpace(env.RefType),
+		strings.TrimSpace(env.RefValue),
+		nullIfEmpty(env.CommitPin),
 		env.ImageName,
 		env.ImageRef,
 		env.TTLSeconds,
@@ -223,6 +237,10 @@ func (s *DevEnvironmentStore) Create(ctx context.Context, env domain.DevEnvironm
 		&record.Environment.TemplateRef,
 		&record.Environment.TemplateDefinitionVersion,
 		&record.Environment.TemplateIntegritySHA256,
+		&record.Environment.RepoURL,
+		&record.Environment.RefType,
+		&record.Environment.RefValue,
+		&commitPin,
 		&record.Environment.ImageName,
 		&record.Environment.ImageRef,
 		&record.Environment.TTLSeconds,
@@ -251,6 +269,9 @@ func (s *DevEnvironmentStore) Create(ctx context.Context, env domain.DevEnvironm
 		t := lastAccessAt.Time.UTC()
 		record.Environment.LastAccessAt = &t
 	}
+	if commitPin.Valid {
+		record.Environment.CommitPin = commitPin.String
+	}
 	record.Environment.TemplateDefinitionID = record.Environment.TemplateRef
 	return record, true, nil
 }
@@ -266,6 +287,7 @@ func (s *DevEnvironmentStore) Get(ctx context.Context, projectID, devEnvID strin
 	}
 	record := DevEnvironmentRecord{}
 	var lastAccessAt sql.NullTime
+	var commitPin sql.NullString
 	row := s.db.QueryRowContext(ctx, selectDevEnvironmentByIDQuery, projectID, devEnvID)
 	if err := row.Scan(
 		&record.Environment.ID,
@@ -273,6 +295,10 @@ func (s *DevEnvironmentStore) Get(ctx context.Context, projectID, devEnvID strin
 		&record.Environment.TemplateRef,
 		&record.Environment.TemplateDefinitionVersion,
 		&record.Environment.TemplateIntegritySHA256,
+		&record.Environment.RepoURL,
+		&record.Environment.RefType,
+		&record.Environment.RefValue,
+		&commitPin,
 		&record.Environment.ImageName,
 		&record.Environment.ImageRef,
 		&record.Environment.TTLSeconds,
@@ -292,6 +318,9 @@ func (s *DevEnvironmentStore) Get(ctx context.Context, projectID, devEnvID strin
 	if lastAccessAt.Valid {
 		t := lastAccessAt.Time.UTC()
 		record.Environment.LastAccessAt = &t
+	}
+	if commitPin.Valid {
+		record.Environment.CommitPin = commitPin.String
 	}
 	record.Environment.TemplateDefinitionID = record.Environment.TemplateRef
 	return record, nil
@@ -308,6 +337,7 @@ func (s *DevEnvironmentStore) GetByIdempotencyKey(ctx context.Context, projectID
 	}
 	record := DevEnvironmentRecord{}
 	var lastAccessAt sql.NullTime
+	var commitPin sql.NullString
 	row := s.db.QueryRowContext(ctx, selectDevEnvironmentByIdempotencyQuery, projectID, idempotencyKey)
 	if err := row.Scan(
 		&record.Environment.ID,
@@ -315,6 +345,10 @@ func (s *DevEnvironmentStore) GetByIdempotencyKey(ctx context.Context, projectID
 		&record.Environment.TemplateRef,
 		&record.Environment.TemplateDefinitionVersion,
 		&record.Environment.TemplateIntegritySHA256,
+		&record.Environment.RepoURL,
+		&record.Environment.RefType,
+		&record.Environment.RefValue,
+		&commitPin,
 		&record.Environment.ImageName,
 		&record.Environment.ImageRef,
 		&record.Environment.TTLSeconds,
@@ -334,6 +368,9 @@ func (s *DevEnvironmentStore) GetByIdempotencyKey(ctx context.Context, projectID
 	if lastAccessAt.Valid {
 		t := lastAccessAt.Time.UTC()
 		record.Environment.LastAccessAt = &t
+	}
+	if commitPin.Valid {
+		record.Environment.CommitPin = commitPin.String
 	}
 	record.Environment.TemplateDefinitionID = record.Environment.TemplateRef
 	return record, nil
@@ -358,12 +395,17 @@ func (s *DevEnvironmentStore) List(ctx context.Context, projectID, state string,
 	for rows.Next() {
 		record := DevEnvironmentRecord{}
 		var lastAccessAt sql.NullTime
+		var commitPin sql.NullString
 		if err := rows.Scan(
 			&record.Environment.ID,
 			&record.Environment.ProjectID,
 			&record.Environment.TemplateRef,
 			&record.Environment.TemplateDefinitionVersion,
 			&record.Environment.TemplateIntegritySHA256,
+			&record.Environment.RepoURL,
+			&record.Environment.RefType,
+			&record.Environment.RefValue,
+			&commitPin,
 			&record.Environment.ImageName,
 			&record.Environment.ImageRef,
 			&record.Environment.TTLSeconds,
@@ -383,6 +425,9 @@ func (s *DevEnvironmentStore) List(ctx context.Context, projectID, state string,
 		if lastAccessAt.Valid {
 			t := lastAccessAt.Time.UTC()
 			record.Environment.LastAccessAt = &t
+		}
+		if commitPin.Valid {
+			record.Environment.CommitPin = commitPin.String
 		}
 		record.Environment.TemplateDefinitionID = record.Environment.TemplateRef
 		out = append(out, record)
@@ -411,12 +456,17 @@ func (s *DevEnvironmentStore) ListExpired(ctx context.Context, projectID string,
 	for rows.Next() {
 		record := DevEnvironmentRecord{}
 		var lastAccessAt sql.NullTime
+		var commitPin sql.NullString
 		if err := rows.Scan(
 			&record.Environment.ID,
 			&record.Environment.ProjectID,
 			&record.Environment.TemplateRef,
 			&record.Environment.TemplateDefinitionVersion,
 			&record.Environment.TemplateIntegritySHA256,
+			&record.Environment.RepoURL,
+			&record.Environment.RefType,
+			&record.Environment.RefValue,
+			&commitPin,
 			&record.Environment.ImageName,
 			&record.Environment.ImageRef,
 			&record.Environment.TTLSeconds,
@@ -436,6 +486,9 @@ func (s *DevEnvironmentStore) ListExpired(ctx context.Context, projectID string,
 		if lastAccessAt.Valid {
 			t := lastAccessAt.Time.UTC()
 			record.Environment.LastAccessAt = &t
+		}
+		if commitPin.Valid {
+			record.Environment.CommitPin = commitPin.String
 		}
 		record.Environment.TemplateDefinitionID = record.Environment.TemplateRef
 		out = append(out, record)

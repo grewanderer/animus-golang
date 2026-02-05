@@ -10,6 +10,12 @@ const (
 	DevEnvStateDeleted      = "deleted"
 )
 
+const (
+	DevEnvRefTypeBranch = "branch"
+	DevEnvRefTypeTag    = "tag"
+	DevEnvRefTypeCommit = "commit"
+)
+
 // DevEnvironment represents a governed interactive development environment.
 type DevEnvironment struct {
 	ID                        string     `json:"devEnvId"`
@@ -18,6 +24,10 @@ type DevEnvironment struct {
 	TemplateDefinitionID      string     `json:"templateDefinitionId,omitempty"`
 	TemplateDefinitionVersion int        `json:"templateDefinitionVersion,omitempty"`
 	TemplateIntegritySHA256   string     `json:"templateIntegritySha256,omitempty"`
+	RepoURL                   string     `json:"repoUrl,omitempty"`
+	RefType                   string     `json:"refType,omitempty"`
+	RefValue                  string     `json:"refValue,omitempty"`
+	CommitPin                 string     `json:"commitPin,omitempty"`
 	ImageName                 string     `json:"imageName,omitempty"`
 	ImageRef                  string     `json:"imageRef,omitempty"`
 	TTLSeconds                int64      `json:"ttlSeconds"`

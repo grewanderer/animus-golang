@@ -32,6 +32,10 @@ const (
 type devEnvCreateRequest struct {
 	IdempotencyKey string `json:"idempotencyKey"`
 	TemplateRef    string `json:"templateRef"`
+	RepoURL        string `json:"repoUrl,omitempty"`
+	RefType        string `json:"refType,omitempty"`
+	RefValue       string `json:"refValue,omitempty"`
+	CommitPin      string `json:"commitPin,omitempty"`
 	ImageName      string `json:"imageName,omitempty"`
 	TTLSeconds     int64  `json:"ttlSeconds,omitempty"`
 }
@@ -801,6 +805,10 @@ func devEnvIntegrity(env domain.DevEnvironment) (string, error) {
 		TemplateRef             string    `json:"template_ref"`
 		TemplateVersion         int       `json:"template_version"`
 		TemplateIntegritySHA256 string    `json:"template_integrity_sha256"`
+		RepoURL                 string    `json:"repo_url"`
+		RefType                 string    `json:"ref_type"`
+		RefValue                string    `json:"ref_value"`
+		CommitPin               string    `json:"commit_pin"`
 		ImageName               string    `json:"image_name"`
 		ImageRef                string    `json:"image_ref"`
 		TTLSeconds              int64     `json:"ttl_seconds"`
@@ -816,6 +824,10 @@ func devEnvIntegrity(env domain.DevEnvironment) (string, error) {
 		TemplateRef:             strings.TrimSpace(env.TemplateRef),
 		TemplateVersion:         env.TemplateDefinitionVersion,
 		TemplateIntegritySHA256: strings.TrimSpace(env.TemplateIntegritySHA256),
+		RepoURL:                 strings.TrimSpace(env.RepoURL),
+		RefType:                 strings.TrimSpace(env.RefType),
+		RefValue:                strings.TrimSpace(env.RefValue),
+		CommitPin:               strings.TrimSpace(env.CommitPin),
 		ImageName:               strings.TrimSpace(env.ImageName),
 		ImageRef:                strings.TrimSpace(env.ImageRef),
 		TTLSeconds:              env.TTLSeconds,
@@ -876,6 +888,18 @@ func devEnvIdempotencyMatch(existing, requested domain.DevEnvironment) bool {
 		return false
 	}
 	if strings.TrimSpace(existing.TemplateIntegritySHA256) != strings.TrimSpace(requested.TemplateIntegritySHA256) {
+		return false
+	}
+	if strings.TrimSpace(existing.RepoURL) != strings.TrimSpace(requested.RepoURL) {
+		return false
+	}
+	if strings.TrimSpace(existing.RefType) != strings.TrimSpace(requested.RefType) {
+		return false
+	}
+	if strings.TrimSpace(existing.RefValue) != strings.TrimSpace(requested.RefValue) {
+		return false
+	}
+	if strings.TrimSpace(existing.CommitPin) != strings.TrimSpace(requested.CommitPin) {
 		return false
 	}
 	if strings.TrimSpace(existing.ImageName) != strings.TrimSpace(requested.ImageName) {
