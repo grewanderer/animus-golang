@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/animus-labs/animus-go/closed/internal/domain"
 	"github.com/animus-labs/animus-go/closed/internal/platform/lineageevent"
@@ -137,6 +138,25 @@ type stubModelVersionTransitionStore struct {
 func (s *stubModelVersionTransitionStore) Insert(ctx context.Context, transition domain.ModelVersionTransition) error {
 	s.transitions = append(s.transitions, transition)
 	return nil
+}
+
+type stubModelVersionProvenanceStore struct {
+	artifactIDs []string
+	datasetIDs  []string
+	calls       int
+	err         error
+}
+
+func (s *stubModelVersionProvenanceStore) InsertArtifacts(ctx context.Context, projectID, modelVersionID string, artifactIDs []string, createdAt time.Time) error {
+	s.calls++
+	s.artifactIDs = append(s.artifactIDs, artifactIDs...)
+	return s.err
+}
+
+func (s *stubModelVersionProvenanceStore) InsertDatasets(ctx context.Context, projectID, modelVersionID string, datasetVersionIDs []string, createdAt time.Time) error {
+	s.calls++
+	s.datasetIDs = append(s.datasetIDs, datasetVersionIDs...)
+	return s.err
 }
 
 type stubRunBindingsStore struct {

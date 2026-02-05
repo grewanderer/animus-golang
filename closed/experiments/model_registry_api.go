@@ -105,6 +105,11 @@ type modelVersionTransitionStore interface {
 	Insert(ctx context.Context, transition domain.ModelVersionTransition) error
 }
 
+type modelVersionProvenanceStore interface {
+	InsertArtifacts(ctx context.Context, projectID, modelVersionID string, artifactIDs []string, createdAt time.Time) error
+	InsertDatasets(ctx context.Context, projectID, modelVersionID string, datasetVersionIDs []string, createdAt time.Time) error
+}
+
 type modelExportStore interface {
 	Create(ctx context.Context, export domain.ModelExport, idempotencyKey string) (domain.ModelExport, bool, error)
 }
@@ -155,6 +160,16 @@ func (api *experimentsAPI) modelVersionTransitionStore() modelVersionTransitionS
 		return api.modelVersionTransitionOverride
 	}
 	return postgres.NewModelVersionTransitionStore(api.db)
+}
+
+func (api *experimentsAPI) modelVersionProvenanceStore() modelVersionProvenanceStore {
+	if api == nil {
+		return nil
+	}
+	if api.modelVersionProvenanceOverride != nil {
+		return api.modelVersionProvenanceOverride
+	}
+	return postgres.NewModelVersionProvenanceStore(api.db)
 }
 
 func (api *experimentsAPI) modelExportStore() modelExportStore {
@@ -559,12 +574,13 @@ func (api *experimentsAPI) handleCreateModelVersion(w http.ResponseWriter, r *ht
 
 	versionStore := api.modelVersionStore()
 	transitionStore := api.modelVersionTransitionStore()
-	if versionStore == nil || transitionStore == nil {
+	provenanceStore := api.modelVersionProvenanceStore()
+	if versionStore == nil || transitionStore == nil || provenanceStore == nil {
 		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
 		return
 	}
 
-	if api.modelVersionStoreOverride != nil || api.modelVersionTransitionOverride != nil || api.modelAuditOverride != nil || api.modelLineageOverride != nil {
+	if api.modelVersionStoreOverride != nil || api.modelVersionTransitionOverride != nil || api.modelAuditOverride != nil || api.modelLineageOverride != nil || api.modelVersionProvenanceOverride != nil {
 		record, created, err := versionStore.Create(r.Context(), modelVersion, idempotencyKey)
 		if err != nil {
 			api.writeError(w, r, http.StatusInternalServerError, "internal_error")
@@ -575,6 +591,14 @@ func (api *experimentsAPI) handleCreateModelVersion(w http.ResponseWriter, r *ht
 			return
 		}
 		if created {
+			if err := provenanceStore.InsertArtifacts(r.Context(), projectID, record.ID, artifactIDs, record.CreatedAt); err != nil {
+				api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+				return
+			}
+			if err := provenanceStore.InsertDatasets(r.Context(), projectID, record.ID, datasetIDs, record.CreatedAt); err != nil {
+				api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+				return
+			}
 			_ = transitionStore.Insert(r.Context(), domain.ModelVersionTransition{
 				ProjectID:      projectID,
 				ModelVersionID: record.ID,
@@ -650,6 +674,11 @@ func (api *experimentsAPI) handleCreateModelVersion(w http.ResponseWriter, r *ht
 
 	txVersionStore := postgres.NewModelVersionStore(tx)
 	txTransitionStore := postgres.NewModelVersionTransitionStore(tx)
+	txProvenanceStore := postgres.NewModelVersionProvenanceStore(tx)
+	if txProvenanceStore == nil {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
 
 	record, created, err := txVersionStore.Create(r.Context(), modelVersion, idempotencyKey)
 	if err != nil {
@@ -661,6 +690,14 @@ func (api *experimentsAPI) handleCreateModelVersion(w http.ResponseWriter, r *ht
 		return
 	}
 	if created {
+		if err := txProvenanceStore.InsertArtifacts(r.Context(), projectID, record.ID, artifactIDs, record.CreatedAt); err != nil {
+			api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+			return
+		}
+		if err := txProvenanceStore.InsertDatasets(r.Context(), projectID, record.ID, datasetIDs, record.CreatedAt); err != nil {
+			api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+			return
+		}
 		_ = txTransitionStore.Insert(r.Context(), domain.ModelVersionTransition{
 			ProjectID:      projectID,
 			ModelVersionID: record.ID,

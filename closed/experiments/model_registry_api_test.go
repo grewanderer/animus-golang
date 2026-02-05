@@ -23,6 +23,7 @@ func TestCreateModelVersionIdempotent(t *testing.T) {
 	}
 	versionStore := newStubModelVersionStore()
 	transitionStore := &stubModelVersionTransitionStore{}
+	provenanceStore := &stubModelVersionProvenanceStore{}
 	audit := &captureAudit{}
 	lineage := &captureLineage{}
 	runBindings := stubRunBindingsStore{
@@ -35,6 +36,7 @@ func TestCreateModelVersionIdempotent(t *testing.T) {
 		modelStoreOverride:             modelStore,
 		modelVersionStoreOverride:      versionStore,
 		modelVersionTransitionOverride: transitionStore,
+		modelVersionProvenanceOverride: provenanceStore,
 		modelRunBindingsOverride:       runBindings,
 		modelAuditOverride:             audit,
 		modelLineageOverride:           lineage,
@@ -83,6 +85,12 @@ func TestCreateModelVersionIdempotent(t *testing.T) {
 	}
 	if audit.count(auditModelVersionCreated) != 1 {
 		t.Fatalf("expected single created audit")
+	}
+	if len(provenanceStore.artifactIDs) != 1 || provenanceStore.artifactIDs[0] != "a1" {
+		t.Fatalf("expected artifact provenance recorded")
+	}
+	if len(provenanceStore.datasetIDs) != 1 || provenanceStore.datasetIDs[0] != "d1" {
+		t.Fatalf("expected dataset provenance recorded")
 	}
 }
 

@@ -74,6 +74,7 @@ type experimentsAPI struct {
 	modelStoreOverride             modelStore
 	modelVersionStoreOverride      modelVersionStore
 	modelVersionTransitionOverride modelVersionTransitionStore
+	modelVersionProvenanceOverride modelVersionProvenanceStore
 	modelExportStoreOverride       modelExportStore
 	modelRunBindingsOverride       runBindingsStore
 	modelRunSpecOverride           runSpecStore
