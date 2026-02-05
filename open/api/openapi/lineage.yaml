@@ -199,6 +199,78 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /runs/{run_id}:
+    get:
+      summary: Experiment run lineage
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Depth"
+        - $ref: "#/components/parameters/MaxEdges"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubgraphResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /model-versions/{model_version_id}:
+    get:
+      summary: Model version lineage
+      parameters:
+        - name: model_version_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Depth"
+        - $ref: "#/components/parameters/MaxEdges"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubgraphResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /subgraphs/git-commits/{commit}:
     get:
       summary: Git commit subgraph
@@ -336,4 +408,3 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/LineageEvent"
-

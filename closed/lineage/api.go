@@ -35,6 +35,8 @@ func (api *lineageAPI) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /subgraphs/dataset-versions/{version_id}", api.handleDatasetVersionSubgraph)
 	mux.HandleFunc("GET /subgraphs/experiment-runs/{run_id}", api.handleRunSubgraph)
 	mux.HandleFunc("GET /subgraphs/git-commits/{commit}", api.handleCommitSubgraph)
+	mux.HandleFunc("GET /runs/{run_id}", api.handleRunSubgraph)
+	mux.HandleFunc("GET /model-versions/{model_version_id}", api.handleModelVersionSubgraph)
 }
 
 type lineageEvent struct {
@@ -160,6 +162,15 @@ func (api *lineageAPI) handleRunSubgraph(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	api.handleSubgraph(w, r, lineageNode{Type: "experiment_run", ID: runID})
+}
+
+func (api *lineageAPI) handleModelVersionSubgraph(w http.ResponseWriter, r *http.Request) {
+	versionID := strings.TrimSpace(r.PathValue("model_version_id"))
+	if versionID == "" {
+		api.writeError(w, r, http.StatusBadRequest, "model_version_id_required")
+		return
+	}
+	api.handleSubgraph(w, r, lineageNode{Type: "model_version", ID: versionID})
 }
 
 func (api *lineageAPI) handleCommitSubgraph(w http.ResponseWriter, r *http.Request) {
