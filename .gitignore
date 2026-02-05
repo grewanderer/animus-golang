@@ -10,6 +10,8 @@
 !/closed/dataplane/*.go
 !/closed/dataset-registry/
 !/closed/dataset-registry/*.go
+!/closed/lineage/
+!/closed/lineage/*.go
 !/closed/audit/
 !/closed/audit/*.go
 !/closed/deploy/
