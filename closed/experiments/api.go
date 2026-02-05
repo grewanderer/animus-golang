@@ -154,6 +154,7 @@ func (api *experimentsAPI) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /projects/{project_id}/model-versions/{model_version_id}:validate", api.handleValidateModelVersion)
 	mux.HandleFunc("POST /projects/{project_id}/model-versions/{model_version_id}:approve", api.handleApproveModelVersion)
 	mux.HandleFunc("POST /projects/{project_id}/model-versions/{model_version_id}:deprecate", api.handleDeprecateModelVersion)
+	mux.HandleFunc("POST /projects/{project_id}/model-versions/{model_version_id}:export", api.handleExportModelVersion)
 	mux.HandleFunc("POST /projects/{project_id}/dev-environments", api.handleCreateDevEnvironment)
 	mux.HandleFunc("GET /projects/{project_id}/dev-environments", api.handleListDevEnvironments)
 	mux.HandleFunc("GET /projects/{project_id}/dev-environments/{dev_env_id}", api.handleGetDevEnvironment)

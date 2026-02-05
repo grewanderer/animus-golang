@@ -177,3 +177,31 @@ func (c *captureLineage) Append(ctx context.Context, event lineageevent.Event) e
 	c.events = append(c.events, event)
 	return nil
 }
+
+type stubModelExportStore struct {
+	exports     map[string]domain.ModelExport
+	idempotency map[string]string
+	createCalls int
+}
+
+func newStubModelExportStore() *stubModelExportStore {
+	return &stubModelExportStore{
+		exports:     map[string]domain.ModelExport{},
+		idempotency: map[string]string{},
+	}
+}
+
+func (s *stubModelExportStore) Create(ctx context.Context, export domain.ModelExport, idempotencyKey string) (domain.ModelExport, bool, error) {
+	s.createCalls++
+	key := export.ProjectID + ":" + idempotencyKey
+	if existingID, ok := s.idempotency[key]; ok {
+		record, ok := s.exports[existingID]
+		if !ok {
+			return domain.ModelExport{}, false, errors.New("idempotency record missing")
+		}
+		return record, false, nil
+	}
+	s.exports[export.ExportID] = export
+	s.idempotency[key] = export.ExportID
+	return export, true, nil
+}

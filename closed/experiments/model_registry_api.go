@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -30,7 +31,6 @@ const (
 type modelCreateRequest struct {
 	IdempotencyKey string         `json:"idempotencyKey"`
 	Name           string         `json:"name"`
-	Description    string         `json:"description,omitempty"`
 	Metadata       map[string]any `json:"metadata,omitempty"`
 }
 
@@ -75,6 +75,16 @@ type modelVersionProvenanceResponse struct {
 
 type modelVersionTransitionResponse struct {
 	ModelVersion domain.ModelVersion `json:"modelVersion"`
+}
+
+type modelExportRequest struct {
+	IdempotencyKey string `json:"idempotencyKey"`
+	Target         string `json:"target,omitempty"`
+}
+
+type modelExportResponse struct {
+	Export  domain.ModelExport `json:"export"`
+	Created bool               `json:"created"`
 }
 
 type modelStore interface {
@@ -948,6 +958,154 @@ func (api *experimentsAPI) handleModelVersionTransition(w http.ResponseWriter, r
 	api.writeJSON(w, http.StatusOK, modelVersionTransitionResponse{ModelVersion: current})
 }
 
+func (api *experimentsAPI) handleExportModelVersion(w http.ResponseWriter, r *http.Request) {
+	identity, ok := auth.IdentityFromContext(r.Context())
+	if !ok || strings.TrimSpace(identity.Subject) == "" {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	projectID := strings.TrimSpace(r.PathValue("project_id"))
+	versionID := strings.TrimSpace(r.PathValue("model_version_id"))
+	if projectID == "" {
+		api.writeError(w, r, http.StatusBadRequest, "project_id_required")
+		return
+	}
+	if versionID == "" {
+		api.writeError(w, r, http.StatusBadRequest, "model_version_id_required")
+		return
+	}
+	var req modelExportRequest
+	if err := decodeJSON(r, &req); err != nil && !errors.Is(err, io.EOF) {
+		api.writeError(w, r, http.StatusBadRequest, "invalid_json")
+		return
+	}
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if idempotencyKey == "" {
+		idempotencyKey = strings.TrimSpace(req.IdempotencyKey)
+	}
+	if idempotencyKey == "" {
+		api.writeError(w, r, http.StatusBadRequest, "idempotency_key_required")
+		return
+	}
+
+	versionStore := api.modelVersionStore()
+	exportStore := api.modelExportStore()
+	if versionStore == nil || exportStore == nil {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	version, err := versionStore.Get(r.Context(), projectID, versionID)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			api.writeError(w, r, http.StatusNotFound, "not_found")
+			return
+		}
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if version.Status != domain.ModelStatusApproved {
+		api.writeError(w, r, http.StatusConflict, "model_version_not_approved")
+		return
+	}
+
+	now := time.Now().UTC()
+	export := domain.ModelExport{
+		ExportID:       uuid.NewString(),
+		ProjectID:      projectID,
+		ModelVersionID: versionID,
+		Status:         "requested",
+		Target:         strings.TrimSpace(req.Target),
+		CreatedAt:      now,
+		CreatedBy:      strings.TrimSpace(identity.Subject),
+	}
+	integrity, err := modelExportIntegrity(export)
+	if err != nil {
+		api.writeError(w, r, http.StatusInternalServerError, "integrity_failed")
+		return
+	}
+	export.IntegritySHA256 = integrity
+
+	if api.modelExportStoreOverride != nil || api.modelAuditOverride != nil {
+		record, created, err := exportStore.Create(r.Context(), export, idempotencyKey)
+		if err != nil {
+			api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+			return
+		}
+		if !created && record.IntegritySHA256 != integrity {
+			api.writeError(w, r, http.StatusConflict, "idempotency_conflict")
+			return
+		}
+		if created {
+			if err := api.appendModelAudit(r.Context(), nil, auditlog.Event{
+				OccurredAt:   now,
+				Actor:        identity.Subject,
+				Action:       auditModelExportRequested,
+				ResourceType: "model_export",
+				ResourceID:   record.ExportID,
+				RequestID:    r.Header.Get("X-Request-Id"),
+				IP:           requestIP(r.RemoteAddr),
+				UserAgent:    r.UserAgent(),
+				Payload: map[string]any{
+					"service":          "experiments",
+					"project_id":       projectID,
+					"model_version_id": versionID,
+					"status":           record.Status,
+				},
+			}); err != nil {
+				api.writeError(w, r, http.StatusInternalServerError, "audit_failed")
+				return
+			}
+		}
+		api.writeJSON(w, http.StatusOK, modelExportResponse{Export: record, Created: created})
+		return
+	}
+
+	tx, err := api.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	txExportStore := postgres.NewModelExportStore(tx)
+	record, created, err := txExportStore.Create(r.Context(), export, idempotencyKey)
+	if err != nil {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if !created && record.IntegritySHA256 != integrity {
+		api.writeError(w, r, http.StatusConflict, "idempotency_conflict")
+		return
+	}
+	if created {
+		if err := api.appendModelAudit(r.Context(), tx, auditlog.Event{
+			OccurredAt:   now,
+			Actor:        identity.Subject,
+			Action:       auditModelExportRequested,
+			ResourceType: "model_export",
+			ResourceID:   record.ExportID,
+			RequestID:    r.Header.Get("X-Request-Id"),
+			IP:           requestIP(r.RemoteAddr),
+			UserAgent:    r.UserAgent(),
+			Payload: map[string]any{
+				"service":          "experiments",
+				"project_id":       projectID,
+				"model_version_id": versionID,
+				"status":           record.Status,
+			},
+		}); err != nil {
+			api.writeError(w, r, http.StatusInternalServerError, "audit_failed")
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+
+	api.writeJSON(w, http.StatusOK, modelExportResponse{Export: record, Created: created})
+}
+
 func (api *experimentsAPI) resolveDatasetVersionsFromRun(ctx context.Context, projectID, runID string) ([]string, error) {
 	store := api.modelRunSpecStore()
 	if store == nil {
@@ -1020,6 +1178,24 @@ func modelVersionIntegrity(version domain.ModelVersion) (string, error) {
 		CodeRef:           version.CodeRef,
 		PolicySnapshotSHA: strings.TrimSpace(version.PolicySnapshotSHA256),
 		CreatedBy:         strings.TrimSpace(version.CreatedBy),
+	}
+	return integritySHA256(input)
+}
+
+func modelExportIntegrity(export domain.ModelExport) (string, error) {
+	type integrityInput struct {
+		ProjectID      string `json:"project_id"`
+		ModelVersionID string `json:"model_version_id"`
+		Status         string `json:"status"`
+		Target         string `json:"target,omitempty"`
+		CreatedBy      string `json:"created_by"`
+	}
+	input := integrityInput{
+		ProjectID:      strings.TrimSpace(export.ProjectID),
+		ModelVersionID: strings.TrimSpace(export.ModelVersionID),
+		Status:         strings.TrimSpace(export.Status),
+		Target:         strings.TrimSpace(export.Target),
+		CreatedBy:      strings.TrimSpace(export.CreatedBy),
 	}
 	return integritySHA256(input)
 }

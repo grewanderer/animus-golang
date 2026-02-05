@@ -3245,6 +3245,536 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/models:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Список моделей
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Точное имя модели (опционально).
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Создать модель
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelCreateResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/models/{model_id}:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: model_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Получить модель
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Model"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/models/{model_id}/versions:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: model_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Список версий модели
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelVersionListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Создать версию модели
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelVersionCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelVersionCreateResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/model-versions/{model_version_id}:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: model_version_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Получить версию модели
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelVersion"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/model-versions/{model_version_id}/provenance:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: model_version_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Получить provenance версии модели
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelVersionProvenanceResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/model-versions/{model_version_id}:validate:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: model_version_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Валидация версии модели
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelVersionTransitionResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invalid transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/model-versions/{model_version_id}:approve:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: model_version_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Аппрув версии модели
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelVersionTransitionResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invalid transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/model-versions/{model_version_id}:deprecate:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: model_version_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Депрекейт версии модели
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelVersionTransitionResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invalid transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/model-versions/{model_version_id}:export:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: model_version_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Экспорт версии модели
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelExportRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelExportResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /projects/{project_id}/dev-environments:
     parameters:
       - name: project_id
@@ -5319,6 +5849,212 @@ components:
           type: string
         integritySha256:
           type: string
+    ModelStatus:
+      type: string
+      enum: [draft, validated, approved, deprecated]
+    Model:
+      type: object
+      additionalProperties: false
+      required: [modelId, projectId, name, version, status, createdAt]
+      properties:
+        modelId:
+          type: string
+        projectId:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        status:
+          $ref: "#/components/schemas/ModelStatus"
+        artifactId:
+          type: string
+        metadata:
+          type: object
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        integritySha256:
+          type: string
+    ModelCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        idempotencyKey:
+          type: string
+        name:
+          type: string
+        metadata:
+          type: object
+    ModelCreateResponse:
+      type: object
+      additionalProperties: false
+      required: [model, created]
+      properties:
+        model:
+          $ref: "#/components/schemas/Model"
+        created:
+          type: boolean
+    ModelListResponse:
+      type: object
+      additionalProperties: false
+      required: [models]
+      properties:
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/Model"
+    ModelVersion:
+      type: object
+      additionalProperties: false
+      required: [modelVersionId, projectId, modelId, version, status, runId, artifactIds, createdAt]
+      properties:
+        modelVersionId:
+          type: string
+        projectId:
+          type: string
+        modelId:
+          type: string
+        version:
+          type: string
+        status:
+          $ref: "#/components/schemas/ModelStatus"
+        runId:
+          type: string
+        artifactIds:
+          type: array
+          items:
+            type: string
+        datasetVersionIds:
+          type: array
+          items:
+            type: string
+        envLockId:
+          type: string
+        codeRef:
+          $ref: "#/components/schemas/CodeRef"
+        policySnapshotSha256:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        integritySha256:
+          type: string
+    ModelVersionCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [version, runId, artifactIds]
+      properties:
+        idempotencyKey:
+          type: string
+        version:
+          type: string
+        runId:
+          type: string
+        artifactIds:
+          type: array
+          items:
+            type: string
+        datasetVersionIds:
+          type: array
+          items:
+            type: string
+    ModelVersionCreateResponse:
+      type: object
+      additionalProperties: false
+      required: [modelVersion, created]
+      properties:
+        modelVersion:
+          $ref: "#/components/schemas/ModelVersion"
+        created:
+          type: boolean
+    ModelVersionListResponse:
+      type: object
+      additionalProperties: false
+      required: [modelVersions]
+      properties:
+        modelVersions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelVersion"
+    ModelVersionProvenanceResponse:
+      type: object
+      additionalProperties: false
+      required: [modelVersionId, projectId, modelId, version, runId, artifactIds]
+      properties:
+        modelVersionId:
+          type: string
+        projectId:
+          type: string
+        modelId:
+          type: string
+        version:
+          type: string
+        runId:
+          type: string
+        artifactIds:
+          type: array
+          items:
+            type: string
+        datasetVersionIds:
+          type: array
+          items:
+            type: string
+        envLockId:
+          type: string
+        codeRef:
+          $ref: "#/components/schemas/CodeRef"
+        policySnapshotSha256:
+          type: string
+    ModelVersionTransitionResponse:
+      type: object
+      additionalProperties: false
+      required: [modelVersion]
+      properties:
+        modelVersion:
+          $ref: "#/components/schemas/ModelVersion"
+    ModelExport:
+      type: object
+      additionalProperties: false
+      required: [exportId, projectId, modelVersionId, status, createdAt]
+      properties:
+        exportId:
+          type: string
+        projectId:
+          type: string
+        modelVersionId:
+          type: string
+        status:
+          type: string
+        target:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        integritySha256:
+          type: string
+    ModelExportRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        target:
+          type: string
+    ModelExportResponse:
+      type: object
+      additionalProperties: false
+      required: [export, created]
+      properties:
+        export:
+          $ref: "#/components/schemas/ModelExport"
+        created:
+          type: boolean
     DevEnvironmentState:
       type: string
       enum: [provisioning, active, failed, expired, deleted]

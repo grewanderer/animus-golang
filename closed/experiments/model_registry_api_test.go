@@ -156,3 +156,95 @@ func TestModelVersionApproveAudited(t *testing.T) {
 		t.Fatalf("expected transition record")
 	}
 }
+
+func TestModelExportRequiresApproved(t *testing.T) {
+	versionStore := newStubModelVersionStore()
+	versionStore.versions["ver-1"] = domain.ModelVersion{
+		ID:        "ver-1",
+		ProjectID: "proj-1",
+		ModelID:   "model-1",
+		Status:    domain.ModelStatusDraft,
+	}
+	exportStore := newStubModelExportStore()
+	audit := &captureAudit{}
+
+	api := &experimentsAPI{
+		modelVersionStoreOverride: versionStore,
+		modelExportStoreOverride:  exportStore,
+		modelAuditOverride:        audit,
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/projects/proj-1/model-versions/ver-1:export", nil)
+	req.SetPathValue("project_id", "proj-1")
+	req.SetPathValue("model_version_id", "ver-1")
+	req.Header.Set("Idempotency-Key", "idem-1")
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), auth.Identity{Subject: "user-1"}))
+	resp := httptest.NewRecorder()
+	api.handleExportModelVersion(resp, req)
+
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("status=%d want 409", resp.Code)
+	}
+	if exportStore.createCalls != 0 {
+		t.Fatalf("expected no export creation")
+	}
+}
+
+func TestModelExportIdempotent(t *testing.T) {
+	versionStore := newStubModelVersionStore()
+	versionStore.versions["ver-1"] = domain.ModelVersion{
+		ID:        "ver-1",
+		ProjectID: "proj-1",
+		ModelID:   "model-1",
+		Status:    domain.ModelStatusApproved,
+	}
+	exportStore := newStubModelExportStore()
+	audit := &captureAudit{}
+
+	api := &experimentsAPI{
+		modelVersionStoreOverride: versionStore,
+		modelExportStoreOverride:  exportStore,
+		modelAuditOverride:        audit,
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/projects/proj-1/model-versions/ver-1:export", nil)
+	req.SetPathValue("project_id", "proj-1")
+	req.SetPathValue("model_version_id", "ver-1")
+	req.Header.Set("Idempotency-Key", "idem-1")
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), auth.Identity{Subject: "user-1"}))
+	resp := httptest.NewRecorder()
+	api.handleExportModelVersion(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status=%d want 200", resp.Code)
+	}
+	var first modelExportResponse
+	if err := json.NewDecoder(resp.Body).Decode(&first); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !first.Created {
+		t.Fatalf("expected created=true")
+	}
+
+	req2 := httptest.NewRequest(http.MethodPost, "/projects/proj-1/model-versions/ver-1:export", nil)
+	req2.SetPathValue("project_id", "proj-1")
+	req2.SetPathValue("model_version_id", "ver-1")
+	req2.Header.Set("Idempotency-Key", "idem-1")
+	req2 = req2.WithContext(auth.ContextWithIdentity(req2.Context(), auth.Identity{Subject: "user-1"}))
+	resp2 := httptest.NewRecorder()
+	api.handleExportModelVersion(resp2, req2)
+
+	if resp2.Code != http.StatusOK {
+		t.Fatalf("status=%d want 200", resp2.Code)
+	}
+	var second modelExportResponse
+	if err := json.NewDecoder(resp2.Body).Decode(&second); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if second.Created {
+		t.Fatalf("expected created=false on idempotent call")
+	}
+	if audit.count(auditModelExportRequested) != 1 {
+		t.Fatalf("expected single export audit")
+	}
+}
