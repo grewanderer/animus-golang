@@ -18,7 +18,7 @@ export GOCACHE := $(CACHE_DIR)/go-build
 export GOMODCACHE := $(CACHE_DIR)/go-mod
 export GOTMPDIR := $(CACHE_DIR)/go-tmp
 
-.PHONY: bootstrap fmt test integrations-test dr-validate lint build openapi-lint openapi-compat guardrails-check dev demo demo-smoke demo-down e2e sbom vuln-scan supply-chain helm-images sast-scan dep-scan
+.PHONY: bootstrap fmt test integrations-test dr-validate lint build openapi-lint openapi-compat guardrails-check dev demo demo-smoke demo-down e2e sbom vuln-scan supply-chain helm-images sast-scan dep-scan integration-up integration-down
 
 bootstrap:
 	@mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(GOTMPDIR)"
@@ -67,6 +67,12 @@ test:
 	@mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(GOTMPDIR)"
 	@echo "==> go test"
 	@./scripts/go_test.sh $(GO_PACKAGES)
+	@if [ "$$ANIMUS_INTEGRATION" = "1" ]; then \
+		echo "==> integration tests"; \
+		ANIMUS_INTEGRATION=1 ./scripts/go_test.sh -tags=integration ./closed/...; \
+	else \
+		echo "==> integration tests skipped (set ANIMUS_INTEGRATION=1)"; \
+	fi
 	@echo "==> python tests"
 	@if [ ! -d "$(PY_SDK_DIR)/tests" ]; then \
 		echo "Python SDK tests not found at $(PY_SDK_DIR)/tests."; \
@@ -82,6 +88,12 @@ test:
 
 integrations-test:
 	@./scripts/go_test.sh ./closed/...
+
+integration-up:
+	@./scripts/integration_up.sh
+
+integration-down:
+	@./scripts/integration_down.sh
 
 
 dr-validate:
