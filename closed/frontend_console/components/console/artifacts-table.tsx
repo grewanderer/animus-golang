@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
 import { CopyButton } from '@/components/console/copy-button';
@@ -56,8 +57,14 @@ export function ArtifactsTable({ artifacts }: { artifacts: RunArtifact[] }) {
                 <td className="text-muted-foreground">{artifact.filename ?? artifact.object_key}</td>
                 <td className="font-mono text-xs text-muted-foreground">{artifact.sha256}</td>
                 <td className="text-xs text-muted-foreground">{artifact.size_bytes}</td>
-                <td>
+                <td className="flex items-center gap-2">
                   <CopyButton value={artifact.artifact_id} />
+                  <Link
+                    href={`/api/experiments/experiment-runs/${artifact.run_id}/artifacts/${artifact.artifact_id}/download`}
+                    className="text-xs font-semibold text-primary"
+                  >
+                    Скачать
+                  </Link>
                 </td>
               </tr>
             ))}

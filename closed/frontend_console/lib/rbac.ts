@@ -55,6 +55,8 @@ export function can(role: EffectiveRole, capability: Capability): boolean {
   }
   if (role === 'editor') {
     switch (capability) {
+      case 'ops:read':
+        return false;
       case 'audit:read':
         return false;
       default:
@@ -62,6 +64,9 @@ export function can(role: EffectiveRole, capability: Capability): boolean {
     }
   }
   if (role === 'viewer') {
+    if (capability === 'audit:read' || capability === 'ops:read') {
+      return false;
+    }
     return capability.endsWith(':read');
   }
   return false;

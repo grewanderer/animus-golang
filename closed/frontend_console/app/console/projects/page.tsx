@@ -33,7 +33,7 @@ export default async function ProjectsPage() {
         title="Проекты"
         description="Контекст доступа, управление ролями и архивирование. Используется проектный контекст из верхней панели."
         actions={
-          <Button variant="secondary" size="sm">
+          <Button variant="secondary" size="sm" disabled title="API создания проекта недоступен через Gateway">
             Создать проект
           </Button>
         }
@@ -62,6 +62,20 @@ export default async function ProjectsPage() {
           </CardContent>
         </Card>
       ) : null}
+      <Card>
+        <CardHeader>
+          <CardTitle>Архивирование и жизненный цикл</CardTitle>
+          <CardDescription>
+            Создание и архивирование проектов выполняются через административные контуры. В этой консоли доступны только
+            роль и контекст.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Для изменения жизненного цикла проекта используйте административные процедуры и зафиксируйте операции в аудите.
+          </p>
+        </CardContent>
+      </Card>
     </PageShell>
   );
 }

@@ -1,5 +1,9 @@
+import { ErrorState } from '@/components/console/error-state';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PageHeader, PageShell } from '@/components/ui/page-shell';
+import { PageHeader, PageSection, PageShell } from '@/components/ui/page-shell';
+import { GatewayAPIError } from '@/lib/gateway-client';
+import type { components } from '@/lib/gateway-openapi';
+import { gatewayServerFetchJSON } from '@/lib/server-gateway';
 
 const copy = {
   datasets: {
@@ -42,21 +46,69 @@ const copy = {
 
 const meta = copy['ops' as keyof typeof copy];
 
-export default function SectionPage() {
+export default async function OpsPage() {
+  let health: components['schemas']['HealthResponse'] | null = null;
+  let ready: components['schemas']['HealthResponse'] | null = null;
+  let error: GatewayAPIError | null = null;
+
+  try {
+    health = await gatewayServerFetchJSON<components['schemas']['HealthResponse']>('/healthz');
+    ready = await gatewayServerFetchJSON<components['schemas']['HealthResponse']>('/readyz');
+  } catch (err) {
+    error = err instanceof GatewayAPIError ? err : new GatewayAPIError(500, 'gateway_unexpected');
+  }
+
   return (
     <PageShell>
       <PageHeader title={meta.title} description={meta.description} />
       <Card>
         <CardHeader>
-          <CardTitle>Рабочий контур</CardTitle>
-          <CardDescription>Раздел подключается к Gateway API с учётом RBAC и аудита.</CardDescription>
+          <CardTitle>Операционная готовность</CardTitle>
+          <CardDescription>Контроль живости, готовности и ссылок на метрики.</CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Интерфейс выстроен по workflow‑логике. Заполнение данных и формы будут добавлены в следующих коммитах.
+            Контур предназначен для дежурных проверок и навигации к инструментам SRE. Все данные извлекаются через Gateway.
           </p>
         </CardContent>
       </Card>
+
+      {error ? <ErrorState code={error.code} requestId={error.requestId} status={error.status} details={error.details} /> : null}
+
+      <PageSection title="Health probes">
+        <Card>
+          <CardHeader>
+            <CardTitle>Gateway probes</CardTitle>
+            <CardDescription>Результаты проверок /healthz и /readyz.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 text-sm md:grid-cols-2">
+            <div>
+              <div className="text-xs text-muted-foreground">Healthz</div>
+              <div>{health ? `${health.service}: ${health.status}` : '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Readyz</div>
+              <div>{ready ? `${ready.service}: ${ready.status}` : '—'}</div>
+            </div>
+          </CardContent>
+        </Card>
+      </PageSection>
+
+      <PageSection title="Метрики и диагностика">
+        <Card>
+          <CardHeader>
+            <CardTitle>Ссылки</CardTitle>
+            <CardDescription>Метрики и логи доступны через внутренние маршруты.</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            <ul className="list-disc pl-5">
+              <li>Прометей метрики: /metrics (доступ зависит от сети).</li>
+              <li>Логи аудита и экспорта доступны через SIEM коннекторы.</li>
+              <li>Информация о версии предоставляется через release‑документацию.</li>
+            </ul>
+          </CardContent>
+        </Card>
+      </PageSection>
     </PageShell>
   );
 }
