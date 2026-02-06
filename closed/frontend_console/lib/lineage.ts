@@ -31,3 +31,16 @@ export const sortLineageEdges = (edges: LineageEdge[]) =>
     }
     return a.event_id - b.event_id;
   });
+
+export const paginateLineage = <T>(items: T[], page: number, pageSize: number) => {
+  const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+  const safeSize = Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : 50;
+  const start = (safePage - 1) * safeSize;
+  return items.slice(start, start + safeSize);
+};
+
+export const paginateLineageNodes = (nodes: LineageNode[], page: number, pageSize: number) =>
+  paginateLineage(sortLineageNodes(nodes), page, pageSize);
+
+export const paginateLineageEdges = (edges: LineageEdge[], page: number, pageSize: number) =>
+  paginateLineage(sortLineageEdges(edges), page, pageSize);
