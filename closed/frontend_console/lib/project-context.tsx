@@ -28,7 +28,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       .find((entry) => entry.startsWith(`${PROJECT_COOKIE_KEY}=`));
     if (cookieValue) {
       const value = decodeURIComponent(cookieValue.split('=')[1] ?? '');
-      if (value) {\n        setProjectIdState(value);\n      }\n    }
+      if (value) {
+        setProjectIdState(value);
+      }
+    }
   }, []);
 
   const setProjectId = useCallback((value: string) => {
