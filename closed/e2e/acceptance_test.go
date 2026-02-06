@@ -12,15 +12,13 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/animus-labs/animus-go/closed/internal/platform/auth"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/google/uuid"
 )
 
 const (
@@ -28,165 +26,247 @@ const (
 	testEnvDigest      = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 )
 
-type authContext struct {
-	secret  string
-	subject string
-	email   string
-	roles   []string
+type e2eConfig struct {
+	GatewayURL   string
+	DatabaseURL  string
+	Timeout      time.Duration
+	FailureTests bool
+	ArtifactsDir string
+	PipelineImg  string
+	DevEnvImg    string
+	DevEnvRepo   string
+	DevEnvRef    string
+	DevEnvRefVal string
+	WebhookURL   string
 }
 
-func TestE2EAcceptance_ModelPromotion(t *testing.T) {
-	infra := ensureInfra(t)
-	repoRoot := repoRoot(t)
-	tmpDir := t.TempDir()
-	applyMigrations(t, repoRoot, infra.databaseURL)
-
-	client := &http.Client{Timeout: 15 * time.Second}
-	authCtx := authContext{
-		secret:  infra.internalAuthSecret,
-		subject: "e2e-user",
-		email:   "e2e@example.com",
-		roles:   []string{"admin"},
-	}
-
-	datasetAddr := freeAddr(t)
-	datasetURL := "http://" + datasetAddr
-	datasetEnv := []string{
-		"DATASET_REGISTRY_HTTP_ADDR=" + datasetAddr,
-		"DATABASE_URL=" + infra.databaseURL,
-		"ANIMUS_INTERNAL_AUTH_SECRET=" + infra.internalAuthSecret,
-		"ANIMUS_MINIO_ENDPOINT=" + infra.minioEndpoint,
-		"ANIMUS_MINIO_ACCESS_KEY=" + infra.minioAccessKey,
-		"ANIMUS_MINIO_SECRET_KEY=" + infra.minioSecretKey,
-		"ANIMUS_MINIO_USE_SSL=false",
-		"ANIMUS_MINIO_BUCKET_DATASETS=" + infra.minioBucketDatasets,
-		"ANIMUS_MINIO_BUCKET_ARTIFACTS=" + infra.minioBucketArtifacts,
-		"DATASET_REGISTRY_RETENTION_INTERVAL=1h",
-	}
-	datasetCmd := startService(t, repoRoot, tmpDir, "dataset-registry", "./closed/dataset-registry", datasetEnv)
-	waitHTTP200(t, datasetURL+"/readyz")
-
-	experimentsAddr := freeAddr(t)
-	experimentsURL := "http://" + experimentsAddr
-	experimentsEnv := []string{
-		"EXPERIMENTS_HTTP_ADDR=" + experimentsAddr,
-		"DATABASE_URL=" + infra.databaseURL,
-		"ANIMUS_INTERNAL_AUTH_SECRET=" + infra.internalAuthSecret,
-		"ANIMUS_CI_WEBHOOK_SECRET=" + infra.ciWebhookSecret,
-		"ANIMUS_MINIO_ENDPOINT=" + infra.minioEndpoint,
-		"ANIMUS_MINIO_ACCESS_KEY=" + infra.minioAccessKey,
-		"ANIMUS_MINIO_SECRET_KEY=" + infra.minioSecretKey,
-		"ANIMUS_MINIO_USE_SSL=false",
-		"ANIMUS_MINIO_BUCKET_DATASETS=" + infra.minioBucketDatasets,
-		"ANIMUS_MINIO_BUCKET_ARTIFACTS=" + infra.minioBucketArtifacts,
-		"ANIMUS_TRAINING_EXECUTOR=disabled",
-		"ANIMUS_EVALUATION_ENABLED=false",
-		"ANIMUS_SCHEDULER_INTERVAL=1h",
-		"ANIMUS_DP_RECONCILE_INTERVAL=1h",
-		"EXPERIMENTS_RETENTION_INTERVAL=1h",
-	}
-	experimentsCmd := startService(t, repoRoot, tmpDir, "experiments", "./closed/experiments", experimentsEnv)
-	waitHTTP200(t, experimentsURL+"/readyz")
-
-	projectID := createProject(t, client, datasetURL, authCtx)
-	datasetID := createDataset(t, client, datasetURL, authCtx, projectID)
-	datasetVersionID := uploadDatasetVersion(t, client, datasetURL, authCtx, projectID, datasetID)
-
-	envDefID := createEnvironmentDefinition(t, client, experimentsURL, authCtx, projectID)
-	envLockID := createEnvironmentLock(t, client, experimentsURL, authCtx, projectID, envDefID)
-
-	runID := createRun(t, client, experimentsURL, authCtx, projectID, envLockID, datasetVersionID)
-	postHeartbeat(t, client, experimentsURL, authCtx, projectID, runID)
-	postTerminal(t, client, experimentsURL, authCtx, projectID, runID)
-
-	artifactID := createRunArtifact(t, client, experimentsURL, authCtx, runID)
-
-	modelID := createModel(t, client, experimentsURL, authCtx, projectID)
-	modelVersionID := createModelVersion(t, client, experimentsURL, authCtx, projectID, modelID, runID, artifactID)
-
-	transitionModelVersion(t, client, experimentsURL, authCtx, projectID, modelVersionID, "validate")
-	transitionModelVersion(t, client, experimentsURL, authCtx, projectID, modelVersionID, "approve")
-	exportModelVersion(t, client, experimentsURL, authCtx, projectID, modelVersionID)
-	transitionModelVersion(t, client, experimentsURL, authCtx, projectID, modelVersionID, "deprecate")
-
-	_ = datasetCmd
-	_ = experimentsCmd
+type e2eState struct {
+	ProjectID        string
+	DatasetID        string
+	DatasetVersionID string
+	EnvDefID         string
+	EnvLockID        string
+	RunID            string
+	ArtifactID       string
+	ModelID          string
+	ModelVersionID   string
+	WebhookSubID     string
+	DevEnvDefID      string
+	DevEnvID         string
+	DevEnvSessionID  string
+	DenyProjectID    string
+	AuditDeliveryID  int64
 }
 
-func startService(t *testing.T, repoRoot, tmpDir, name, path string, env []string) *exec.Cmd {
+type httpResponse struct {
+	StatusCode int
+	Body       []byte
+}
+
+func TestE2EFullStack(t *testing.T) {
+	cfg := loadConfig(t)
+	client := &http.Client{Timeout: cfg.Timeout}
+	state := &e2eState{}
+
+	t.Run("datasets", func(t *testing.T) {
+		state.ProjectID = createProject(t, client, cfg.datasetURL())
+		state.DatasetID = createDataset(t, client, cfg.datasetURL(), state.ProjectID)
+		state.DatasetVersionID = uploadDatasetVersion(t, client, cfg.datasetURL(), state.ProjectID, state.DatasetID)
+		downloadDatasetVersion(t, client, cfg.datasetURL(), state.ProjectID, state.DatasetVersionID)
+	})
+
+	t.Run("webhook-subscriptions", func(t *testing.T) {
+		state.WebhookSubID = createWebhookSubscription(t, client, cfg.experimentsURL(), state.ProjectID, cfg.WebhookURL)
+	})
+
+	t.Run("environment-locks", func(t *testing.T) {
+		state.EnvDefID = createEnvironmentDefinition(t, client, cfg.experimentsURL(), state.ProjectID, "runtime", "python:3.11")
+		state.EnvLockID = createEnvironmentLock(t, client, cfg.experimentsURL(), state.ProjectID, state.EnvDefID, http.StatusOK)
+	})
+
+	t.Run("registry-deny-policy", func(t *testing.T) {
+		if cfg.DatabaseURL == "" {
+			t.Skip("ANIMUS_E2E_DATABASE_URL not set")
+		}
+		db := openDB(t, cfg.DatabaseURL)
+		defer db.Close()
+
+		state.DenyProjectID = createProject(t, client, cfg.datasetURL())
+		upsertRegistryPolicy(t, db, state.DenyProjectID, "deny_unsigned", "noop")
+
+		denyEnvDefID := createEnvironmentDefinition(t, client, cfg.experimentsURL(), state.DenyProjectID, "runtime", "python:3.11")
+		createEnvironmentLock(t, client, cfg.experimentsURL(), state.DenyProjectID, denyEnvDefID, http.StatusUnprocessableEntity)
+	})
+
+	t.Run("devenv", func(t *testing.T) {
+		state.DevEnvDefID = createEnvironmentDefinition(t, client, cfg.experimentsURL(), state.ProjectID, "ide", cfg.DevEnvImg)
+		state.DevEnvID = createDevEnv(t, client, cfg.experimentsURL(), state.ProjectID, state.DevEnvDefID, cfg)
+		state.DevEnvSessionID = openDevEnvSession(t, client, cfg.experimentsURL(), state.ProjectID, state.DevEnvID, 60)
+		proxyURL := cfg.experimentsURL() + "/devenv-sessions/" + state.DevEnvSessionID + "/proxy/"
+		waitForProxy(t, client, proxyURL, state.ProjectID, 60*time.Second)
+
+		expiringSessionID := openDevEnvSession(t, client, cfg.experimentsURL(), state.ProjectID, state.DevEnvID, 2)
+		time.Sleep(3 * time.Second)
+		resp := doRequest(t, client, http.MethodGet, cfg.experimentsURL()+"/devenv-sessions/"+expiringSessionID+"/proxy/", nil, state.ProjectID)
+		if resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("expected session expired 403, got %d: %s", resp.StatusCode, resp.Body)
+		}
+	})
+
+	t.Run("runs", func(t *testing.T) {
+		invalidPayload := runPayload(state.EnvLockID, state.DatasetVersionID, cfg.PipelineImg, "not a url", "deadbeef")
+		invalidResp := doJSONWithIdempotency(t, client, http.MethodPost, fmt.Sprintf("%s/projects/%s/runs", cfg.experimentsURL(), state.ProjectID), invalidPayload, state.ProjectID, "invalid-run-"+uuid.NewString())
+		if invalidResp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("expected invalid codeRef to fail, got %d body=%s", invalidResp.StatusCode, invalidResp.Body)
+		}
+
+		idempotencyKey := "run-idem-" + uuid.NewString()
+		state.RunID = createRun(t, client, cfg.experimentsURL(), state.ProjectID, state.EnvLockID, state.DatasetVersionID, cfg.PipelineImg, idempotencyKey)
+		runID2 := createRun(t, client, cfg.experimentsURL(), state.ProjectID, state.EnvLockID, state.DatasetVersionID, cfg.PipelineImg, idempotencyKey)
+		if runID2 != state.RunID {
+			t.Fatalf("idempotent run mismatch: %s vs %s", state.RunID, runID2)
+		}
+
+		planRun(t, client, cfg.experimentsURL(), state.ProjectID, state.RunID)
+		dispatchID := dispatchRun(t, client, cfg.experimentsURL(), state.ProjectID, state.RunID)
+		dispatchID2 := dispatchRun(t, client, cfg.experimentsURL(), state.ProjectID, state.RunID)
+		if dispatchID2 != dispatchID {
+			t.Fatalf("dispatch idempotency mismatch: %s vs %s", dispatchID, dispatchID2)
+		}
+
+		postHeartbeat(t, client, cfg.experimentsURL(), state.ProjectID, state.RunID, "hb-"+state.RunID)
+		postArtifactCommitted(t, client, cfg.experimentsURL(), state.ProjectID, state.RunID, "artifact-"+state.RunID)
+		postTerminal(t, client, cfg.experimentsURL(), state.ProjectID, state.RunID, "term-"+state.RunID)
+		postTerminal(t, client, cfg.experimentsURL(), state.ProjectID, state.RunID, "term-"+state.RunID)
+
+		state.ArtifactID = createRunArtifact(t, client, cfg.experimentsURL(), state.RunID)
+		downloadRunArtifact(t, client, cfg.experimentsURL(), state.RunID, state.ArtifactID)
+		getRun(t, client, cfg.experimentsURL(), state.ProjectID, state.RunID)
+		getReproBundle(t, client, cfg.experimentsURL(), state.ProjectID, state.RunID)
+	})
+
+	t.Run("model-registry", func(t *testing.T) {
+		state.ModelID = createModel(t, client, cfg.experimentsURL(), state.ProjectID)
+		state.ModelVersionID = createModelVersion(t, client, cfg.experimentsURL(), state.ProjectID, state.ModelID, state.RunID, state.ArtifactID)
+		transitionModelVersion(t, client, cfg.experimentsURL(), state.ProjectID, state.ModelVersionID, "validate")
+		transitionModelVersion(t, client, cfg.experimentsURL(), state.ProjectID, state.ModelVersionID, "approve")
+
+		exportStatus := exportModelVersion(t, client, cfg.experimentsURL(), state.ProjectID, state.ModelVersionID, "export-idem-"+uuid.NewString())
+		if exportStatus != http.StatusForbidden {
+			t.Fatalf("expected export denied, got %d", exportStatus)
+		}
+
+		if cfg.DatabaseURL == "" {
+			t.Skip("ANIMUS_E2E_DATABASE_URL not set for export allow")
+		}
+		db := openDB(t, cfg.DatabaseURL)
+		defer db.Close()
+		insertPolicyDecisionAllow(t, db, state.RunID)
+		exportStatus = exportModelVersion(t, client, cfg.experimentsURL(), state.ProjectID, state.ModelVersionID, "export-idem-"+uuid.NewString())
+		if exportStatus != http.StatusOK {
+			t.Fatalf("expected export allowed, got %d", exportStatus)
+		}
+	})
+
+	t.Run("webhook-deliveries", func(t *testing.T) {
+		waitForWebhookDelivery(t, client, cfg.experimentsURL(), state.ProjectID, "RunFinished", 1, 30*time.Second)
+		waitForWebhookDelivery(t, client, cfg.experimentsURL(), state.ProjectID, "ModelApproved", 1, 30*time.Second)
+	})
+
+	t.Run("lineage", func(t *testing.T) {
+		getLineageRun(t, client, cfg.lineageURL(), state.RunID)
+		getLineageModelVersion(t, client, cfg.lineageURL(), state.ModelVersionID)
+	})
+
+	if cfg.FailureTests {
+		t.Run("resilience", func(t *testing.T) {
+			deliveryID := firstWebhookDeliveryID(t, client, cfg.experimentsURL(), state.ProjectID, "RunFinished")
+			replayWebhookDelivery(t, client, cfg.experimentsURL(), state.ProjectID, deliveryID, "replay-token")
+			replayWebhookDelivery(t, client, cfg.experimentsURL(), state.ProjectID, deliveryID, "replay-token")
+			waitForAuditDLQ(t, client, cfg.auditURL(), 1, 45*time.Second)
+			replayAuditDLQ(t, client, cfg.auditURL())
+		})
+	}
+
+	writeArtifacts(t, cfg, state)
+}
+
+func loadConfig(t *testing.T) e2eConfig {
 	t.Helper()
-	bin := filepath.Join(tmpDir, fmt.Sprintf("%s.bin", name))
-	build := exec.Command("go", "build", "-o", bin, path)
-	build.Dir = repoRoot
-	out, err := build.CombinedOutput()
-	if err != nil {
-		t.Fatalf("go build %s: %v\n%s", path, err, string(out))
+	gateway := strings.TrimRight(strings.TrimSpace(os.Getenv("ANIMUS_E2E_GATEWAY_URL")), "/")
+	if gateway == "" {
+		t.Skip("ANIMUS_E2E_GATEWAY_URL not set")
 	}
-
-	cmd := exec.Command(bin)
-	cmd.Env = append(os.Environ(), env...)
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start %s: %v", name, err)
-	}
-	t.Cleanup(func() { stopProcess(t, cmd, &buf) })
-	return cmd
-}
-
-func applyMigrations(t *testing.T, repoRoot, databaseURL string) {
-	t.Helper()
-	db, err := sql.Open("pgx", databaseURL)
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer func() { _ = db.Close() }()
-
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
-  version BIGINT PRIMARY KEY,
-  name TEXT NOT NULL,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-)`); err != nil {
-		t.Fatalf("create schema_migrations: %v", err)
-	}
-
-	migrationsDir := filepath.Join(repoRoot, "closed", "migrations")
-	files, err := filepath.Glob(filepath.Join(migrationsDir, "*.up.sql"))
-	if err != nil {
-		t.Fatalf("list migrations: %v", err)
-	}
-	sort.Strings(files)
-	for _, file := range files {
-		base := filepath.Base(file)
-		verRaw := strings.SplitN(base, "_", 2)[0]
-		if verRaw == "" {
-			continue
-		}
-		ver, err := strconv.Atoi(verRaw)
+	timeout := 20 * time.Second
+	if raw := strings.TrimSpace(os.Getenv("ANIMUS_E2E_TIMEOUT")); raw != "" {
+		parsed, err := time.ParseDuration(raw)
 		if err != nil {
-			t.Fatalf("invalid migration version %s: %v", base, err)
+			t.Fatalf("invalid ANIMUS_E2E_TIMEOUT: %v", err)
 		}
-		var exists int
-		if err := db.QueryRow("SELECT 1 FROM schema_migrations WHERE version = $1 LIMIT 1", ver).Scan(&exists); err == nil && exists == 1 {
-			continue
-		}
-		raw, err := os.ReadFile(file)
-		if err != nil {
-			t.Fatalf("read migration %s: %v", file, err)
-		}
-		if _, err := db.Exec(string(raw)); err != nil {
-			t.Fatalf("apply migration %s: %v", base, err)
-		}
-		if _, err := db.Exec("INSERT INTO schema_migrations(version, name) VALUES ($1, $2)", ver, strings.TrimSuffix(base, ".up.sql")); err != nil {
-			t.Fatalf("record migration %s: %v", base, err)
-		}
+		timeout = parsed
+	}
+	pipelineImg := strings.TrimSpace(os.Getenv("ANIMUS_E2E_PIPELINE_IMAGE"))
+	if pipelineImg == "" {
+		pipelineImg = "ghcr.io/acme/train@" + testPipelineDigest
+	}
+	if !strings.Contains(pipelineImg, "@sha256:") {
+		t.Fatalf("ANIMUS_E2E_PIPELINE_IMAGE must be digest-pinned")
+	}
+	devEnvImg := strings.TrimSpace(os.Getenv("ANIMUS_E2E_DEVENV_IMAGE"))
+	if devEnvImg == "" {
+		devEnvImg = "nginx:alpine"
+	}
+	devEnvRepo := strings.TrimSpace(os.Getenv("ANIMUS_E2E_DEVENV_REPO_URL"))
+	if devEnvRepo == "" {
+		devEnvRepo = "https://github.com/animus-labs/animus-go"
+	}
+	devEnvRef := strings.TrimSpace(os.Getenv("ANIMUS_E2E_DEVENV_REF_TYPE"))
+	if devEnvRef == "" {
+		devEnvRef = "branch"
+	}
+	devEnvRefVal := strings.TrimSpace(os.Getenv("ANIMUS_E2E_DEVENV_REF_VALUE"))
+	if devEnvRefVal == "" {
+		devEnvRefVal = "main"
+	}
+	webhookURL := strings.TrimSpace(os.Getenv("ANIMUS_E2E_WEBHOOK_TARGET_URL"))
+	if webhookURL == "" {
+		webhookURL = "http://127.0.0.1:1/webhook"
+	}
+
+	return e2eConfig{
+		GatewayURL:   gateway,
+		DatabaseURL:  strings.TrimSpace(os.Getenv("ANIMUS_E2E_DATABASE_URL")),
+		Timeout:      timeout,
+		FailureTests: parseBool(os.Getenv("ANIMUS_E2E_FAILURES")),
+		ArtifactsDir: strings.TrimSpace(os.Getenv("ANIMUS_E2E_ARTIFACTS_DIR")),
+		PipelineImg:  pipelineImg,
+		DevEnvImg:    devEnvImg,
+		DevEnvRepo:   devEnvRepo,
+		DevEnvRef:    devEnvRef,
+		DevEnvRefVal: devEnvRefVal,
+		WebhookURL:   webhookURL,
 	}
 }
 
-func createProject(t *testing.T, client *http.Client, baseURL string, authCtx authContext) string {
-	payload := map[string]any{"name": "e2e-project"}
-	resp := doJSON(t, client, http.MethodPost, baseURL+"/projects", payload, authCtx, "")
+func (c e2eConfig) datasetURL() string {
+	return c.GatewayURL + "/api/dataset-registry"
+}
+
+func (c e2eConfig) experimentsURL() string {
+	return c.GatewayURL + "/api/experiments"
+}
+
+func (c e2eConfig) auditURL() string {
+	return c.GatewayURL + "/api/audit"
+}
+
+func (c e2eConfig) lineageURL() string {
+	return c.GatewayURL + "/api/lineage"
+}
+
+func createProject(t *testing.T, client *http.Client, baseURL string) string {
+	payload := map[string]any{"name": "e2e-project-" + uuid.NewString()}
+	resp := doJSON(t, client, http.MethodPost, baseURL+"/projects", payload, "")
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create project status=%d body=%s", resp.StatusCode, resp.Body)
 	}
@@ -200,9 +280,9 @@ func createProject(t *testing.T, client *http.Client, baseURL string, authCtx au
 	return out.ProjectID
 }
 
-func createDataset(t *testing.T, client *http.Client, baseURL string, authCtx authContext, projectID string) string {
+func createDataset(t *testing.T, client *http.Client, baseURL, projectID string) string {
 	payload := map[string]any{"name": "e2e-dataset"}
-	resp := doJSON(t, client, http.MethodPost, baseURL+"/datasets", payload, authCtx, projectID)
+	resp := doJSON(t, client, http.MethodPost, baseURL+"/datasets", payload, projectID)
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create dataset status=%d body=%s", resp.StatusCode, resp.Body)
 	}
@@ -216,7 +296,7 @@ func createDataset(t *testing.T, client *http.Client, baseURL string, authCtx au
 	return out.DatasetID
 }
 
-func uploadDatasetVersion(t *testing.T, client *http.Client, baseURL string, authCtx authContext, projectID, datasetID string) string {
+func uploadDatasetVersion(t *testing.T, client *http.Client, baseURL, projectID, datasetID string) string {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	file, err := writer.CreateFormFile("file", "dataset.txt")
@@ -236,8 +316,7 @@ func uploadDatasetVersion(t *testing.T, client *http.Client, baseURL string, aut
 		t.Fatalf("new request: %v", err)
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	signRequest(t, req, authCtx)
-	req.Header.Set("X-Project-Id", projectID)
+	setRequestHeaders(req, projectID)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -258,15 +337,21 @@ func uploadDatasetVersion(t *testing.T, client *http.Client, baseURL string, aut
 	return out.VersionID
 }
 
-func createEnvironmentDefinition(t *testing.T, client *http.Client, baseURL string, authCtx authContext, projectID string) string {
+func downloadDatasetVersion(t *testing.T, client *http.Client, baseURL, projectID, versionID string) {
+	url := fmt.Sprintf("%s/dataset-versions/%s/download", baseURL, versionID)
+	resp := doRequest(t, client, http.MethodGet, url, nil, projectID)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("download dataset version status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
+func createEnvironmentDefinition(t *testing.T, client *http.Client, baseURL, projectID, imageName, imageRef string) string {
 	payload := map[string]any{
-		"name": "e2e-env",
-		"baseImages": []map[string]any{
-			{"name": "python", "ref": "python:3.11"},
-		},
+		"name": "e2e-env-" + imageName,
+		"baseImages": []map[string]any{{"name": imageName, "ref": imageRef}},
 	}
 	url := fmt.Sprintf("%s/projects/%s/environment-definitions", baseURL, projectID)
-	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, payload, authCtx, "", "")
+	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, payload, projectID, "envdef-"+uuid.NewString())
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("create env def status=%d body=%s", resp.StatusCode, resp.Body)
 	}
@@ -282,15 +367,18 @@ func createEnvironmentDefinition(t *testing.T, client *http.Client, baseURL stri
 	return out.Definition.ID
 }
 
-func createEnvironmentLock(t *testing.T, client *http.Client, baseURL string, authCtx authContext, projectID, defID string) string {
+func createEnvironmentLock(t *testing.T, client *http.Client, baseURL, projectID, defID string, expectedStatus int) string {
 	payload := map[string]any{
 		"environmentDefinitionId": defID,
-		"imageDigests":            map[string]string{"python": testEnvDigest},
+		"imageDigests":            map[string]string{"runtime": testEnvDigest, "ide": testEnvDigest},
 	}
 	url := fmt.Sprintf("%s/projects/%s/environment-locks", baseURL, projectID)
-	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, payload, authCtx, "", "")
-	if resp.StatusCode != http.StatusOK {
+	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, payload, projectID, "envlock-"+uuid.NewString())
+	if resp.StatusCode != expectedStatus {
 		t.Fatalf("create env lock status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+	if expectedStatus != http.StatusOK {
+		return ""
 	}
 	var out struct {
 		Lock struct {
@@ -304,7 +392,79 @@ func createEnvironmentLock(t *testing.T, client *http.Client, baseURL string, au
 	return out.Lock.LockID
 }
 
-func createRun(t *testing.T, client *http.Client, baseURL string, authCtx authContext, projectID, lockID, datasetVersionID string) string {
+func createDevEnv(t *testing.T, client *http.Client, baseURL, projectID, templateID string, cfg e2eConfig) string {
+	payload := map[string]any{
+		"templateRef": templateID,
+		"repoUrl":     cfg.DevEnvRepo,
+		"refType":     cfg.DevEnvRef,
+		"refValue":    cfg.DevEnvRefVal,
+		"ttlSeconds":  600,
+	}
+	url := fmt.Sprintf("%s/projects/%s/devenvs", baseURL, projectID)
+	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, payload, projectID, "devenv-"+uuid.NewString())
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create devenv status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+	var out struct {
+		Environment struct {
+			ID string `json:"devEnvId"`
+		} `json:"environment"`
+	}
+	decodeJSONBody(t, resp.Body, &out)
+	if out.Environment.ID == "" {
+		t.Fatalf("devenv id missing")
+	}
+	return out.Environment.ID
+}
+
+func openDevEnvSession(t *testing.T, client *http.Client, baseURL, projectID, devEnvID string, ttlSeconds int) string {
+	payload := map[string]any{"ttlSeconds": ttlSeconds}
+	url := fmt.Sprintf("%s/projects/%s/devenvs/%s:open-ide-session", baseURL, projectID, devEnvID)
+	resp := doJSON(t, client, http.MethodPost, url, payload, projectID)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("open session status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+	var out struct {
+		SessionID string `json:"sessionId"`
+	}
+	decodeJSONBody(t, resp.Body, &out)
+	if out.SessionID == "" {
+		t.Fatalf("session id missing")
+	}
+	return out.SessionID
+}
+
+func waitForProxy(t *testing.T, client *http.Client, url, projectID string, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	var last httpResponse
+	for time.Now().Before(deadline) {
+		last = doRequest(t, client, http.MethodGet, url, nil, projectID)
+		if last.StatusCode == http.StatusOK {
+			return
+		}
+		time.Sleep(2 * time.Second)
+	}
+	t.Fatalf("proxy did not become ready: status=%d body=%s", last.StatusCode, last.Body)
+}
+
+func createRun(t *testing.T, client *http.Client, baseURL, projectID, lockID, datasetVersionID, pipelineImage, idempotencyKey string) string {
+	payload := runPayload(lockID, datasetVersionID, pipelineImage, "https://github.com/animus-labs/animus-go", "deadbeef")
+	url := fmt.Sprintf("%s/projects/%s/runs", baseURL, projectID)
+	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, payload, projectID, idempotencyKey)
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		t.Fatalf("create run status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+	var out struct {
+		RunID string `json:"runId"`
+	}
+	decodeJSONBody(t, resp.Body, &out)
+	if out.RunID == "" {
+		t.Fatalf("run id missing")
+	}
+	return out.RunID
+}
+
+func runPayload(lockID, datasetVersionID, pipelineImage, repoURL, commitSHA string) map[string]any {
 	pipelineSpec := map[string]any{
 		"apiVersion":  "animus/v1alpha1",
 		"kind":        "Pipeline",
@@ -316,9 +476,9 @@ func createRun(t *testing.T, client *http.Client, baseURL string, authCtx authCo
 			"steps": []map[string]any{
 				{
 					"name":    "train",
-					"image":   "ghcr.io/acme/train@" + testPipelineDigest,
-					"command": []string{"echo"},
-					"args":    []string{"ok"},
+					"image":   pipelineImage,
+					"command": []string{"/bin/sh", "-c"},
+					"args":    []string{"echo ok"},
 					"inputs": map[string]any{
 						"datasets": []map[string]any{
 							{"name": "dataset", "datasetRef": "dataset"},
@@ -345,50 +505,61 @@ func createRun(t *testing.T, client *http.Client, baseURL string, authCtx authCo
 		},
 	}
 
-	payload := map[string]any{
+	return map[string]any{
 		"pipelineSpec":    pipelineSpec,
 		"datasetBindings": map[string]string{"dataset": datasetVersionID},
 		"codeRef": map[string]any{
-			"repoUrl":   "https://github.com/animus-labs/animus-go",
-			"commitSha": "deadbeef",
+			"repoUrl":   repoURL,
+			"commitSha": commitSHA,
 			"scmType":   "git",
 		},
 		"envLock":    map[string]any{"lockId": lockID},
 		"parameters": map[string]any{},
 	}
-	url := fmt.Sprintf("%s/projects/%s/runs", baseURL, projectID)
-	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, payload, authCtx, "", "")
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		t.Fatalf("create run status=%d body=%s", resp.StatusCode, resp.Body)
-	}
-	var out struct {
-		RunID string `json:"runId"`
-	}
-	decodeJSONBody(t, resp.Body, &out)
-	if out.RunID == "" {
-		t.Fatalf("run id missing")
-	}
-	return out.RunID
 }
 
-func postHeartbeat(t *testing.T, client *http.Client, baseURL string, authCtx authContext, projectID, runID string) {
+func planRun(t *testing.T, client *http.Client, baseURL, projectID, runID string) {
+	url := fmt.Sprintf("%s/projects/%s/runs/%s:plan", baseURL, projectID, runID)
+	resp := doJSON(t, client, http.MethodPost, url, map[string]any{}, projectID)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("plan run status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
+func dispatchRun(t *testing.T, client *http.Client, baseURL, projectID, runID string) string {
+	url := fmt.Sprintf("%s/projects/%s/runs/%s:dispatch", baseURL, projectID, runID)
+	resp := doJSON(t, client, http.MethodPost, url, map[string]any{}, projectID)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("dispatch run status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+	var out struct {
+		DispatchID string `json:"dispatchId"`
+	}
+	decodeJSONBody(t, resp.Body, &out)
+	if out.DispatchID == "" {
+		t.Fatalf("dispatch id missing")
+	}
+	return out.DispatchID
+}
+
+func postHeartbeat(t *testing.T, client *http.Client, baseURL, projectID, runID, eventID string) {
 	payload := map[string]any{
-		"eventId":   fmt.Sprintf("hb-%d", time.Now().UnixNano()),
+		"eventId":   eventID,
 		"runId":     runID,
 		"projectId": projectID,
 		"emittedAt": time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	url := fmt.Sprintf("%s/internal/cp/runs/%s/heartbeat", baseURL, runID)
-	resp := doJSON(t, client, http.MethodPost, url, payload, authCtx, "")
+	resp := doJSON(t, client, http.MethodPost, url, payload, projectID)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("heartbeat status=%d body=%s", resp.StatusCode, resp.Body)
 	}
 }
 
-func postTerminal(t *testing.T, client *http.Client, baseURL string, authCtx authContext, projectID, runID string) {
+func postTerminal(t *testing.T, client *http.Client, baseURL, projectID, runID, eventID string) {
 	now := time.Now().UTC()
 	payload := map[string]any{
-		"eventId":    fmt.Sprintf("term-%d", time.Now().UnixNano()),
+		"eventId":    eventID,
 		"runId":      runID,
 		"projectId":  projectID,
 		"state":      "succeeded",
@@ -396,13 +567,28 @@ func postTerminal(t *testing.T, client *http.Client, baseURL string, authCtx aut
 		"finishedAt": now.Format(time.RFC3339Nano),
 	}
 	url := fmt.Sprintf("%s/internal/cp/runs/%s/terminal", baseURL, runID)
-	resp := doJSON(t, client, http.MethodPost, url, payload, authCtx, "")
+	resp := doJSON(t, client, http.MethodPost, url, payload, projectID)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("terminal status=%d body=%s", resp.StatusCode, resp.Body)
 	}
 }
 
-func createRunArtifact(t *testing.T, client *http.Client, baseURL string, authCtx authContext, runID string) string {
+func postArtifactCommitted(t *testing.T, client *http.Client, baseURL, projectID, runID, eventID string) {
+	payload := map[string]any{
+		"eventId":   eventID,
+		"runId":     runID,
+		"projectId": projectID,
+		"emittedAt": time.Now().UTC().Format(time.RFC3339Nano),
+		"payload":   map[string]any{"note": "artifact committed"},
+	}
+	url := fmt.Sprintf("%s/internal/cp/runs/%s/artifact-committed", baseURL, runID)
+	resp := doJSON(t, client, http.MethodPost, url, payload, projectID)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("artifact committed status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
+func createRunArtifact(t *testing.T, client *http.Client, baseURL, runID string) string {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	_ = writer.WriteField("kind", "model")
@@ -423,7 +609,7 @@ func createRunArtifact(t *testing.T, client *http.Client, baseURL string, authCt
 		t.Fatalf("new artifact request: %v", err)
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	signRequest(t, req, authCtx)
+	setRequestHeaders(req, "")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -446,10 +632,34 @@ func createRunArtifact(t *testing.T, client *http.Client, baseURL string, authCt
 	return out.Artifact.ArtifactID
 }
 
-func createModel(t *testing.T, client *http.Client, baseURL string, authCtx authContext, projectID string) string {
+func downloadRunArtifact(t *testing.T, client *http.Client, baseURL, runID, artifactID string) {
+	url := fmt.Sprintf("%s/experiment-runs/%s/artifacts/%s/download", baseURL, runID, artifactID)
+	resp := doRequest(t, client, http.MethodGet, url, nil, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("download artifact status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
+func getRun(t *testing.T, client *http.Client, baseURL, projectID, runID string) {
+	url := fmt.Sprintf("%s/projects/%s/runs/%s", baseURL, projectID, runID)
+	resp := doRequest(t, client, http.MethodGet, url, nil, projectID)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get run status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
+func getReproBundle(t *testing.T, client *http.Client, baseURL, projectID, runID string) {
+	url := fmt.Sprintf("%s/projects/%s/runs/%s/reproducibility-bundle", baseURL, projectID, runID)
+	resp := doRequest(t, client, http.MethodGet, url, nil, projectID)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get repro bundle status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
+func createModel(t *testing.T, client *http.Client, baseURL, projectID string) string {
 	payload := map[string]any{"name": "e2e-model"}
 	url := fmt.Sprintf("%s/projects/%s/models", baseURL, projectID)
-	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, payload, authCtx, "", "")
+	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, payload, projectID, "model-"+uuid.NewString())
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("create model status=%d body=%s", resp.StatusCode, resp.Body)
 	}
@@ -465,14 +675,14 @@ func createModel(t *testing.T, client *http.Client, baseURL string, authCtx auth
 	return out.Model.ModelID
 }
 
-func createModelVersion(t *testing.T, client *http.Client, baseURL string, authCtx authContext, projectID, modelID, runID, artifactID string) string {
+func createModelVersion(t *testing.T, client *http.Client, baseURL, projectID, modelID, runID, artifactID string) string {
 	payload := map[string]any{
 		"version":     "v1",
 		"runId":       runID,
 		"artifactIds": []string{artifactID},
 	}
 	url := fmt.Sprintf("%s/projects/%s/models/%s/versions", baseURL, projectID, modelID)
-	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, payload, authCtx, "", "")
+	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, payload, projectID, "modelver-"+uuid.NewString())
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("create model version status=%d body=%s", resp.StatusCode, resp.Body)
 	}
@@ -488,28 +698,235 @@ func createModelVersion(t *testing.T, client *http.Client, baseURL string, authC
 	return out.ModelVersion.ModelVersionID
 }
 
-func transitionModelVersion(t *testing.T, client *http.Client, baseURL string, authCtx authContext, projectID, versionID, action string) {
+func transitionModelVersion(t *testing.T, client *http.Client, baseURL, projectID, versionID, action string) {
 	url := fmt.Sprintf("%s/projects/%s/model-versions/%s:%s", baseURL, projectID, versionID, action)
-	resp := doJSON(t, client, http.MethodPost, url, map[string]any{}, authCtx, "")
+	resp := doJSON(t, client, http.MethodPost, url, map[string]any{}, projectID)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("model version %s status=%d body=%s", action, resp.StatusCode, resp.Body)
 	}
 }
 
-func exportModelVersion(t *testing.T, client *http.Client, baseURL string, authCtx authContext, projectID, versionID string) {
+func exportModelVersion(t *testing.T, client *http.Client, baseURL, projectID, versionID, idempotencyKey string) int {
 	url := fmt.Sprintf("%s/projects/%s/model-versions/%s:export", baseURL, projectID, versionID)
-	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, map[string]any{}, authCtx, "", "")
+	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, map[string]any{}, projectID, idempotencyKey)
+	return resp.StatusCode
+}
+
+func createWebhookSubscription(t *testing.T, client *http.Client, baseURL, projectID, targetURL string) string {
+	payload := map[string]any{
+		"name":        "e2e-webhook",
+		"target_url":  targetURL,
+		"event_types": []string{"RunFinished", "ModelApproved"},
+	}
+	url := fmt.Sprintf("%s/projects/%s/webhooks/subscriptions", baseURL, projectID)
+	resp := doJSON(t, client, http.MethodPost, url, payload, projectID)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create webhook status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+	var out struct {
+		ID string `json:"id"`
+	}
+	decodeJSONBody(t, resp.Body, &out)
+	if out.ID == "" {
+		t.Fatalf("webhook subscription id missing")
+	}
+	return out.ID
+}
+
+type webhookDelivery struct {
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	EventType string `json:"event_type"`
+}
+
+func listWebhookDeliveries(t *testing.T, client *http.Client, baseURL, projectID, eventType string) []webhookDelivery {
+	url := fmt.Sprintf("%s/projects/%s/webhooks/deliveries?event_type=%s", baseURL, projectID, eventType)
+	resp := doRequest(t, client, http.MethodGet, url, nil, projectID)
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("model export status=%d body=%s", resp.StatusCode, resp.Body)
+		t.Fatalf("list webhook deliveries status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+	var out struct {
+		Deliveries []webhookDelivery `json:"deliveries"`
+	}
+	decodeJSONBody(t, resp.Body, &out)
+	return out.Deliveries
+}
+
+func waitForWebhookDelivery(t *testing.T, client *http.Client, baseURL, projectID, eventType string, minCount int, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		deliveries := listWebhookDeliveries(t, client, baseURL, projectID, eventType)
+		if len(deliveries) >= minCount {
+			return
+		}
+		time.Sleep(2 * time.Second)
+	}
+	t.Fatalf("timeout waiting for webhook deliveries %s", eventType)
+}
+
+func firstWebhookDeliveryID(t *testing.T, client *http.Client, baseURL, projectID, eventType string) string {
+	deliveries := listWebhookDeliveries(t, client, baseURL, projectID, eventType)
+	if len(deliveries) == 0 {
+		t.Fatalf("no webhook deliveries for %s", eventType)
+	}
+	return deliveries[0].ID
+}
+
+func replayWebhookDelivery(t *testing.T, client *http.Client, baseURL, projectID, deliveryID, token string) {
+	url := fmt.Sprintf("%s/projects/%s/webhooks/deliveries/%s:replay", baseURL, projectID, deliveryID)
+	resp := doJSONWithIdempotency(t, client, http.MethodPost, url, map[string]any{}, projectID, token)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("webhook replay status=%d body=%s", resp.StatusCode, resp.Body)
 	}
 }
 
-type httpResponse struct {
-	StatusCode int
-	Body       []byte
+func getLineageRun(t *testing.T, client *http.Client, baseURL, runID string) {
+	url := fmt.Sprintf("%s/runs/%s", baseURL, runID)
+	resp := doRequest(t, client, http.MethodGet, url, nil, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("lineage run status=%d body=%s", resp.StatusCode, resp.Body)
+	}
 }
 
-func doJSON(t *testing.T, client *http.Client, method, url string, payload any, authCtx authContext, projectID string) httpResponse {
+func getLineageModelVersion(t *testing.T, client *http.Client, baseURL, versionID string) {
+	url := fmt.Sprintf("%s/model-versions/%s", baseURL, versionID)
+	resp := doRequest(t, client, http.MethodGet, url, nil, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("lineage model version status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
+func waitForAuditDLQ(t *testing.T, client *http.Client, baseURL string, minCount int, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		url := fmt.Sprintf("%s/admin/audit/exports/deliveries?status=dlq", baseURL)
+		resp := doRequest(t, client, http.MethodGet, url, nil, "")
+		if resp.StatusCode == http.StatusOK {
+			var out struct {
+				Deliveries []struct {
+					DeliveryID int64 `json:"delivery_id"`
+				} `json:"deliveries"`
+			}
+			decodeJSONBody(t, resp.Body, &out)
+			if len(out.Deliveries) >= minCount {
+				return
+			}
+		}
+		time.Sleep(2 * time.Second)
+	}
+	t.Fatalf("timeout waiting for audit DLQ")
+}
+
+func replayAuditDLQ(t *testing.T, client *http.Client, baseURL string) {
+	url := fmt.Sprintf("%s/admin/audit/exports/deliveries?status=dlq", baseURL)
+	resp := doRequest(t, client, http.MethodGet, url, nil, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list dlq status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+	var out struct {
+		Deliveries []struct {
+			DeliveryID int64 `json:"delivery_id"`
+		} `json:"deliveries"`
+	}
+	decodeJSONBody(t, resp.Body, &out)
+	if len(out.Deliveries) == 0 {
+		t.Fatalf("expected at least one dlq delivery")
+	}
+	replayURL := fmt.Sprintf("%s/admin/audit/exports/dlq/%d:replay", baseURL, out.Deliveries[0].DeliveryID)
+	resp = doJSONWithIdempotency(t, client, http.MethodPost, replayURL, map[string]any{}, "", "replay-"+uuid.NewString())
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("replay status=%d body=%s", resp.StatusCode, resp.Body)
+	}
+}
+
+func openDB(t *testing.T, dbURL string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("pgx", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		t.Fatalf("ping db: %v", err)
+	}
+	return db
+}
+
+func upsertRegistryPolicy(t *testing.T, db *sql.DB, projectID, mode, provider string) {
+	t.Helper()
+	_, err := db.Exec(`INSERT INTO registry_policies (project_id, mode, provider, created_at, updated_at)
+		VALUES ($1,$2,$3,now(),now())
+		ON CONFLICT (project_id) DO UPDATE SET mode = EXCLUDED.mode, provider = EXCLUDED.provider, updated_at = now()`, projectID, mode, provider)
+	if err != nil {
+		t.Fatalf("upsert registry policy: %v", err)
+	}
+}
+
+func insertPolicyDecisionAllow(t *testing.T, db *sql.DB, runID string) {
+	t.Helper()
+	policyID := "e2e-policy"
+	versionID := "e2e-policy-v1"
+	decisionID := "e2e-decision-" + uuid.NewString()
+	_, err := db.Exec(`INSERT INTO policies (policy_id, name, description, created_at, created_by, integrity_sha256)
+		VALUES ($1,$2,$3,now(),$4,$5)
+		ON CONFLICT (policy_id) DO NOTHING`, policyID, "e2e", "e2e", "e2e", "e2e")
+	if err != nil {
+		t.Fatalf("insert policy: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO policy_versions (policy_version_id, policy_id, version, status, spec_yaml, spec_json, spec_sha256, created_at, created_by, integrity_sha256)
+		VALUES ($1,$2,$3,$4,$5,'{}'::jsonb,$6,now(),$7,$8)
+		ON CONFLICT (policy_version_id) DO NOTHING`, versionID, policyID, 1, "active", "e2e", "e2e", "e2e", "e2e")
+	if err != nil {
+		t.Fatalf("insert policy version: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO policy_decisions (decision_id, run_id, policy_id, policy_version_id, policy_sha256, context, context_sha256, decision, rule_id, reason, created_at, created_by, integrity_sha256)
+		VALUES ($1,$2,$3,$4,$5,'{}'::jsonb,$6,$7,$8,$9,now(),$10,$11)
+		ON CONFLICT (decision_id) DO NOTHING`, decisionID, runID, policyID, versionID, "e2e", "e2e", "allow", "e2e", "e2e", "e2e", "e2e")
+	if err != nil {
+		t.Fatalf("insert policy decision: %v", err)
+	}
+}
+
+func writeArtifacts(t *testing.T, cfg e2eConfig, state *e2eState) {
+	t.Helper()
+	if cfg.ArtifactsDir == "" {
+		return
+	}
+	if err := os.MkdirAll(cfg.ArtifactsDir, 0o755); err != nil {
+		t.Fatalf("create artifacts dir: %v", err)
+	}
+	payload := map[string]any{
+		"project_id":         state.ProjectID,
+		"dataset_id":         state.DatasetID,
+		"dataset_version_id": state.DatasetVersionID,
+		"env_definition_id":  state.EnvDefID,
+		"env_lock_id":        state.EnvLockID,
+		"run_id":             state.RunID,
+		"artifact_id":        state.ArtifactID,
+		"model_id":           state.ModelID,
+		"model_version_id":   state.ModelVersionID,
+		"webhook_sub_id":     state.WebhookSubID,
+		"devenv_id":          state.DevEnvID,
+		"devenv_session_id":  state.DevEnvSessionID,
+		"deny_project_id":    state.DenyProjectID,
+	}
+	data, _ := json.MarshalIndent(payload, "", "  ")
+	path := filepath.Join(cfg.ArtifactsDir, "e2e_ids.json")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write artifacts: %v", err)
+	}
+}
+
+func parseBool(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func doJSON(t *testing.T, client *http.Client, method, url string, payload any, projectID string) httpResponse {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("marshal json: %v", err)
@@ -519,10 +936,7 @@ func doJSON(t *testing.T, client *http.Client, method, url string, payload any, 
 		t.Fatalf("new request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if projectID != "" {
-		req.Header.Set("X-Project-Id", projectID)
-	}
-	signRequest(t, req, authCtx)
+	setRequestHeaders(req, projectID)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("do request: %v", err)
@@ -532,7 +946,7 @@ func doJSON(t *testing.T, client *http.Client, method, url string, payload any, 
 	return httpResponse{StatusCode: resp.StatusCode, Body: body}
 }
 
-func doJSONWithIdempotency(t *testing.T, client *http.Client, method, url string, payload any, authCtx authContext, projectID, idempotencyKey string) httpResponse {
+func doJSONWithIdempotency(t *testing.T, client *http.Client, method, url string, payload any, projectID, idempotencyKey string) httpResponse {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("marshal json: %v", err)
@@ -542,14 +956,11 @@ func doJSONWithIdempotency(t *testing.T, client *http.Client, method, url string
 		t.Fatalf("new request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if projectID != "" {
-		req.Header.Set("X-Project-Id", projectID)
-	}
 	if idempotencyKey == "" {
-		idempotencyKey = fmt.Sprintf("idem-%d", time.Now().UnixNano())
+		idempotencyKey = "idem-" + uuid.NewString()
 	}
 	req.Header.Set("Idempotency-Key", idempotencyKey)
-	signRequest(t, req, authCtx)
+	setRequestHeaders(req, projectID)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("do request: %v", err)
@@ -559,22 +970,25 @@ func doJSONWithIdempotency(t *testing.T, client *http.Client, method, url string
 	return httpResponse{StatusCode: resp.StatusCode, Body: body}
 }
 
-func signRequest(t *testing.T, req *http.Request, authCtx authContext) {
-	roles := strings.Join(authCtx.roles, ",")
-	reqID := fmt.Sprintf("req-%d", time.Now().UnixNano())
-	ts := strconv.FormatInt(time.Now().Unix(), 10)
-
-	req.Header.Set("X-Request-Id", reqID)
-	req.Header.Set(auth.HeaderSubject, authCtx.subject)
-	req.Header.Set(auth.HeaderEmail, authCtx.email)
-	req.Header.Set(auth.HeaderRoles, roles)
-	req.Header.Set(auth.HeaderInternalAuthTimestamp, ts)
-
-	sig, err := auth.ComputeInternalAuthSignature(authCtx.secret, ts, req.Method, req.URL.Path, reqID, authCtx.subject, authCtx.email, roles)
+func doRequest(t *testing.T, client *http.Client, method, url string, body io.Reader, projectID string) httpResponse {
+	req, err := http.NewRequest(method, url, body)
 	if err != nil {
-		t.Fatalf("compute signature: %v", err)
+		t.Fatalf("new request: %v", err)
 	}
-	req.Header.Set(auth.HeaderInternalAuthSignature, sig)
+	setRequestHeaders(req, projectID)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	return httpResponse{StatusCode: resp.StatusCode, Body: readBody(t, resp.Body)}
+}
+
+func setRequestHeaders(req *http.Request, projectID string) {
+	req.Header.Set("X-Request-Id", "req-"+uuid.NewString())
+	if projectID != "" {
+		req.Header.Set("X-Project-Id", projectID)
+	}
 }
 
 func decodeJSONBody(t *testing.T, data []byte, out any) {

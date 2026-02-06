@@ -18,7 +18,7 @@ export GOCACHE := $(CACHE_DIR)/go-build
 export GOMODCACHE := $(CACHE_DIR)/go-mod
 export GOTMPDIR := $(CACHE_DIR)/go-tmp
 
-.PHONY: bootstrap fmt test integrations-test dr-validate lint build openapi-lint openapi-compat guardrails-check dev demo demo-smoke demo-down e2e sbom vuln-scan supply-chain helm-images sast-scan dep-scan integration-up integration-down system-up system-down
+.PHONY: bootstrap fmt test integrations-test dr-validate lint build openapi-lint openapi-compat guardrails-check dev demo demo-smoke demo-down e2e e2e-full system-test sbom vuln-scan supply-chain helm-images sast-scan dep-scan integration-up integration-down system-up system-down
 
 bootstrap:
 	@mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(GOTMPDIR)"
@@ -143,6 +143,11 @@ supply-chain:
 
 e2e:
 	@./scripts/e2e.sh
+
+e2e-full:
+	@./scripts/e2e_full.sh
+
+system-test: e2e-full
 
 dev:
 	@COMPOSE_BIN="$(COMPOSE_BIN)" ./closed/scripts/dev.sh
