@@ -4,7 +4,11 @@ import { JetBrains_Mono, Space_Grotesk } from 'next/font/google';
 import './globals.css';
 
 const mono = JetBrains_Mono({ subsets: ['latin', 'cyrillic'], variable: '--font-mono' });
-const sans = Space_Grotesk({ subsets: ['latin', 'cyrillic'], variable: '--font-sans' });
+const sans = Space_Grotesk({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  fallback: ['Inter', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+});
 
 const metadataBase = new URL(
   process.env.NEXT_PUBLIC_SITE_URL ??
