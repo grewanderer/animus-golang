@@ -1,5 +1,6 @@
 import { AuditDeliveryTable } from '@/components/console/audit-delivery-table';
 import { ErrorState } from '@/components/console/error-state';
+import { Pagination } from '@/components/console/pagination';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableContainer, TableEmpty } from '@/components/ui/table';
 import { PageHeader, PageSection, PageShell } from '@/components/ui/page-shell';
@@ -58,6 +59,9 @@ type SearchParams = {
   q?: string;
   delivery_status?: string;
   delivery_id?: string;
+  events_page?: string;
+  deliveries_page?: string;
+  attempts_page?: string;
 };
 
 export default async function AuditPage({ searchParams }: { searchParams: SearchParams }) {
@@ -66,6 +70,9 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
   const query = searchParams.q?.toLowerCase().trim() ?? '';
   const deliveryStatus = searchParams.delivery_status?.trim() ?? '';
   const deliveryId = searchParams.delivery_id?.trim() ?? '';
+  const eventsPage = Number(searchParams.events_page ?? '1') || 1;
+  const deliveriesPage = Number(searchParams.deliveries_page ?? '1') || 1;
+  const attemptsPage = Number(searchParams.attempts_page ?? '1') || 1;
   let events: components['schemas']['AuditEvent'][] = [];
   let deliveries: components['schemas']['ExportDelivery'][] = [];
   let attempts: components['schemas']['ExportDeliveryAttempt'][] = [];
@@ -105,6 +112,38 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
       .includes(query);
   });
 
+  const sortedEvents = [...filteredEvents].sort((a, b) => {
+    const aTime = a.occurred_at ? new Date(a.occurred_at).getTime() : 0;
+    const bTime = b.occurred_at ? new Date(b.occurred_at).getTime() : 0;
+    if (aTime !== bTime) {
+      return bTime - aTime;
+    }
+    return a.event_id - b.event_id;
+  });
+  const sortedDeliveries = [...deliveries].sort((a, b) => {
+    const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return bTime - aTime;
+  });
+  const sortedAttempts = [...attempts].sort((a, b) => {
+    const aTime = a.attempted_at ? new Date(a.attempted_at).getTime() : 0;
+    const bTime = b.attempted_at ? new Date(b.attempted_at).getTime() : 0;
+    return bTime - aTime;
+  });
+
+  const eventPageSize = 20;
+  const deliveryPageSize = 20;
+  const attemptPageSize = 20;
+  const eventTotalPages = Math.max(1, Math.ceil(sortedEvents.length / eventPageSize));
+  const deliveryTotalPages = Math.max(1, Math.ceil(sortedDeliveries.length / deliveryPageSize));
+  const attemptTotalPages = Math.max(1, Math.ceil(sortedAttempts.length / attemptPageSize));
+  const safeEventsPage = Math.min(eventsPage, eventTotalPages);
+  const safeDeliveriesPage = Math.min(deliveriesPage, deliveryTotalPages);
+  const safeAttemptsPage = Math.min(attemptsPage, attemptTotalPages);
+  const eventsSlice = sortedEvents.slice((safeEventsPage - 1) * eventPageSize, safeEventsPage * eventPageSize);
+  const deliveriesSlice = sortedDeliveries.slice((safeDeliveriesPage - 1) * deliveryPageSize, safeDeliveriesPage * deliveryPageSize);
+  const attemptsSlice = sortedAttempts.slice((safeAttemptsPage - 1) * attemptPageSize, safeAttemptsPage * attemptPageSize);
+
   return (
     <PageShell>
       <PageHeader title={meta.title} description={meta.description} />
@@ -134,7 +173,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
               </tr>
             </thead>
             <tbody>
-              {filteredEvents.map((event) => (
+              {eventsSlice.map((event) => (
                 <tr key={event.event_id}>
                   <td className="font-mono text-xs">{event.event_id}</td>
                   <td className="text-xs text-muted-foreground">{formatDateTime(event.occurred_at)}</td>
@@ -147,13 +186,15 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
               ))}
             </tbody>
           </Table>
-          {filteredEvents.length === 0 ? <TableEmpty>События не найдены.</TableEmpty> : null}
+          {eventsSlice.length === 0 ? <TableEmpty>События не найдены.</TableEmpty> : null}
         </TableContainer>
+        <Pagination page={safeEventsPage} totalPages={eventTotalPages} param="events_page" />
       </PageSection>
 
       <PageSection title="SIEM доставки">
         <DeliveryFilters />
-        <AuditDeliveryTable deliveries={deliveries} role={role} />
+        <AuditDeliveryTable deliveries={deliveriesSlice} role={role} />
+        <Pagination page={safeDeliveriesPage} totalPages={deliveryTotalPages} param="deliveries_page" />
       </PageSection>
 
       <PageSection title="Попытки доставки" description="Укажите delivery_id через query ?delivery_id=...">
@@ -170,7 +211,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
               </tr>
             </thead>
             <tbody>
-              {attempts.map((attempt) => (
+              {attemptsSlice.map((attempt) => (
                 <tr key={attempt.attempt_id}>
                   <td className="font-mono text-xs">{attempt.attempt_id}</td>
                   <td className="text-xs">{attempt.delivery_id}</td>
@@ -182,8 +223,9 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
               ))}
             </tbody>
           </Table>
-          {attempts.length === 0 ? <TableEmpty>Попытки не найдены.</TableEmpty> : null}
+          {attemptsSlice.length === 0 ? <TableEmpty>Попытки не найдены.</TableEmpty> : null}
         </TableContainer>
+        <Pagination page={safeAttemptsPage} totalPages={attemptTotalPages} param="attempts_page" />
       </PageSection>
     </PageShell>
   );

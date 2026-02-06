@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 
+import { Breadcrumbs } from '@/components/console/breadcrumbs';
 import { OperationsPanel } from '@/components/console/operations-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -232,6 +233,9 @@ export function AppShell({ session, children }: { session: GatewaySession; child
                   <div className="mt-2 text-xs text-muted-foreground">Код: {session.error}</div>
                 </div>
               ) : null}
+              <div className="mb-4">
+                <Breadcrumbs />
+              </div>
               <div className="mb-6">
                 <OperationsPanel />
               </div>

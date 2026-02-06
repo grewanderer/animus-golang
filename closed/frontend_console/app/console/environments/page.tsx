@@ -101,6 +101,17 @@ export default async function EnvironmentsPage({ searchParams }: { searchParams:
     return [lock.lockId, lock.environmentDefinitionId, lock.envHash, images].join(' ').toLowerCase().includes(query);
   });
 
+  const sortedDefinitions = [...filteredDefinitions].sort((a, b) => {
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    if (aTime !== bTime) {
+      return bTime - aTime;
+    }
+    return a.environmentDefinitionId.localeCompare(b.environmentDefinitionId);
+  });
+
+  const sortedLocks = [...filteredLocks].sort((a, b) => a.lockId.localeCompare(b.lockId));
+
   const findVerification = (digest: string) =>
     verifications.find((record) => record.imageDigestRef.includes(digest));
 
@@ -149,7 +160,7 @@ export default async function EnvironmentsPage({ searchParams }: { searchParams:
               </tr>
             </thead>
             <tbody>
-              {filteredDefinitions.map((env) => (
+              {sortedDefinitions.map((env) => (
                 <tr key={env.environmentDefinitionId}>
                   <td className="font-mono text-xs">
                     <div className="flex items-center gap-2">
@@ -175,7 +186,7 @@ export default async function EnvironmentsPage({ searchParams }: { searchParams:
               ))}
             </tbody>
           </Table>
-          {filteredDefinitions.length === 0 ? <TableEmpty>Определения не найдены.</TableEmpty> : null}
+          {sortedDefinitions.length === 0 ? <TableEmpty>Определения не найдены.</TableEmpty> : null}
         </TableContainer>
       </PageSection>
 
@@ -192,7 +203,7 @@ export default async function EnvironmentsPage({ searchParams }: { searchParams:
               </tr>
             </thead>
             <tbody>
-              {filteredLocks.map((lock) => (
+              {sortedLocks.map((lock) => (
                 <tr key={lock.lockId}>
                   <td className="font-mono text-xs">
                     <div className="flex items-center gap-2">
@@ -235,7 +246,7 @@ export default async function EnvironmentsPage({ searchParams }: { searchParams:
               ))}
             </tbody>
           </Table>
-          {filteredLocks.length === 0 ? <TableEmpty>Блокировки не найдены.</TableEmpty> : null}
+          {sortedLocks.length === 0 ? <TableEmpty>Блокировки не найдены.</TableEmpty> : null}
         </TableContainer>
       </PageSection>
     </PageShell>

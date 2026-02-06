@@ -29,7 +29,11 @@ export function RunActions({ projectId, runId }: { projectId: string; runId: str
   const [idempotency, setIdempotency] = useState('');
   const { addOperation, updateOperation } = useOperations();
 
-  const invoke = async (action: string, fn: () => Promise<void>) => {
+  const invoke = async (
+    action: string,
+    fn: () => Promise<void>,
+    options?: { poll?: { kind: 'run'; projectId: string; runId: string }; retry?: { kind: 'dispatch-run'; projectId: string; runId: string } },
+  ) => {
     setError(null);
     const operationId = `${action}-${Date.now()}`;
     addOperation({
@@ -38,6 +42,8 @@ export function RunActions({ projectId, runId }: { projectId: string; runId: str
       status: 'pending',
       createdAt: new Date().toISOString(),
       details: runId,
+      poll: options?.poll,
+      retry: options?.retry,
     });
     try {
       await fn();
@@ -111,20 +117,27 @@ export function RunActions({ projectId, runId }: { projectId: string; runId: str
               variant="default"
               size="sm"
               onClick={() =>
-                invoke('Диспетчеризация Run', async () => {
-                  const response = await gatewayFetchJSON<DispatchResponse>(
-                    `/api/experiments/projects/${projectId}/runs/${runId}:dispatch`,
-                    {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        ...(idempotency.trim() ? { 'Idempotency-Key': idempotency.trim() } : {}),
+                invoke(
+                  'Диспетчеризация Run',
+                  async () => {
+                    const response = await gatewayFetchJSON<DispatchResponse>(
+                      `/api/experiments/projects/${projectId}/runs/${runId}:dispatch`,
+                      {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          ...(idempotency.trim() ? { 'Idempotency-Key': idempotency.trim() } : {}),
+                        },
+                        body: JSON.stringify({ idempotencyKey: idempotency.trim() || undefined }),
                       },
-                      body: JSON.stringify({ idempotencyKey: idempotency.trim() || undefined }),
-                    },
-                  );
-                  setDispatch(response);
-                })
+                    );
+                    setDispatch(response);
+                  },
+                  {
+                    poll: { kind: 'run', projectId, runId },
+                    retry: { kind: 'dispatch-run', projectId, runId },
+                  },
+                )
               }
             >
               Диспетчеризировать

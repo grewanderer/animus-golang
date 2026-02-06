@@ -68,7 +68,10 @@ export function NewDevEnvForm({ projectId }: { projectId: string }) {
         body: JSON.stringify(body),
       });
       setResult(response);
-      updateOperation(operationId, 'succeeded', response.environment.devEnvId);
+      const finalStatus = response.environment.state === 'active' ? 'succeeded' : 'pending';
+      updateOperation(operationId, finalStatus, response.environment.devEnvId, {
+        poll: { kind: 'devenv', projectId, devEnvId: response.environment.devEnvId },
+      });
     } catch (err) {
       if (err instanceof GatewayAPIError) {
         setError(err);

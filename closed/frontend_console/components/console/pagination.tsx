@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
 
-export function Pagination({ page, totalPages }: { page: number; totalPages: number }) {
+export function Pagination({ page, totalPages, param = 'page' }: { page: number; totalPages: number; param?: string }) {
   const router = useRouter();
   const params = useSearchParams();
 
@@ -14,7 +14,7 @@ export function Pagination({ page, totalPages }: { page: number; totalPages: num
 
   const setPage = (next: number) => {
     const search = new URLSearchParams(params.toString());
-    search.set('page', String(next));
+    search.set(param, String(next));
     router.push(`?${search.toString()}`);
   };
 

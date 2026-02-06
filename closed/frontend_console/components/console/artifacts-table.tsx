@@ -2,8 +2,10 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 import { CopyButton } from '@/components/console/copy-button';
+import { Pagination } from '@/components/console/pagination';
 import { Table, TableContainer, TableEmpty } from '@/components/ui/table';
 import type { components } from '@/lib/gateway-openapi';
 
@@ -11,6 +13,9 @@ export type RunArtifact = components['schemas']['ExperimentRunArtifact'];
 
 export function ArtifactsTable({ artifacts }: { artifacts: RunArtifact[] }) {
   const [query, setQuery] = useState('');
+  const params = useSearchParams();
+  const pageRaw = Number(params.get('page') ?? '1');
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
 
   const filtered = useMemo(() => {
     if (!query.trim()) {
@@ -23,6 +28,21 @@ export function ArtifactsTable({ artifacts }: { artifacts: RunArtifact[] }) {
         .some((value) => value.toLowerCase().includes(q)),
     );
   }, [artifacts, query]);
+
+  const sorted = useMemo(
+    () =>
+      [...filtered].sort((a, b) => {
+        const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return bTime - aTime;
+      }),
+    [filtered],
+  );
+
+  const pageSize = 20;
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const slice = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   return (
     <div className="flex flex-col gap-4">
@@ -49,7 +69,7 @@ export function ArtifactsTable({ artifacts }: { artifacts: RunArtifact[] }) {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((artifact) => (
+            {slice.map((artifact) => (
               <tr key={artifact.artifact_id}>
                 <td className="font-mono text-xs">{artifact.artifact_id}</td>
                 <td>{artifact.kind}</td>
@@ -70,8 +90,9 @@ export function ArtifactsTable({ artifacts }: { artifacts: RunArtifact[] }) {
             ))}
           </tbody>
         </Table>
-        {filtered.length === 0 ? <TableEmpty>Артефакты отсутствуют.</TableEmpty> : null}
+        {slice.length === 0 ? <TableEmpty>Артефакты отсутствуют.</TableEmpty> : null}
       </TableContainer>
+      <Pagination page={safePage} totalPages={totalPages} />
     </div>
   );
 }
