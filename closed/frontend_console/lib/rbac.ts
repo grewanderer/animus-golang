@@ -19,7 +19,7 @@ export function deriveEffectiveRole(roles: string[] | undefined): EffectiveRole 
     const rank = roleRank[role] ?? 0;
     if (rank > score) {
       score = rank;
-      best = role as EffectiveRole;
+      best = rank === roleRank.admin ? 'admin' : (role as EffectiveRole);
     }
   }
   return best;
