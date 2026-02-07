@@ -2,48 +2,90 @@
 
 Документ описывает подготовку офлайн‑набора и установку без доступа к интернету.
 
-## 1. Подготовка образов
-1. Зафиксируйте дигесты в файлах значений (пример):
-```yaml
-image:
-  repository: registry.local/animus
-  tag: "0.1.0"
-  digest: "sha256:..." # или image.digests для отдельных сервисов
-```
-2. Получите список образов:
-```bash
-scripts/list_images.sh --values values-control-plane.yaml --values values-data-plane.yaml > images.txt
-```
-3. Загрузите образы в локальный registry и убедитесь, что они доступны по digests.
+## 1. Предпосылки
 
-## 2. Формирование offline‑набора
-Используйте пакетировщик:
+- Подготовленные `values-datapilot.yaml` и `values-dataplane.yaml`.
+- Доступ к контейнерному registry в изолированном контуре.
+- Helm и kubectl доступны в изолированной среде.
+
+## 2. Формирование офлайн‑набора (в online‑контуре)
+
+**Команды:**
 ```bash
-closed/scripts/airgap-bundle.sh --output ./bundle --values values-control-plane.yaml --values values-data-plane.yaml
+# список образов по значениям
+scripts/list_images.sh --values values-datapilot.yaml --values values-dataplane.yaml > images.txt
+
+# сборка bundle
+closed/scripts/airgap-bundle.sh \
+  --output ./bundle \
+  --values values-datapilot.yaml \
+  --values values-dataplane.yaml
 ```
-Внутри `bundle/` будет:
-- Helm‑чарты (`*.tgz`)
-- `images.txt` и `images.tar`
-- `SHA256SUMS`
+
+**Ожидаемый результат:**
+- В `bundle/` есть `*.tgz` чарты, `images.txt`, `images.tar`, `SHA256SUMS`.
 
 ## 3. Проверка целостности
+
+**Команды:**
 ```bash
 cd bundle
 sha256sum -c SHA256SUMS
 ```
 
-## 4. Развёртывание в изолированной среде
-1. Импортируйте образы:
+**Ожидаемый результат:**
+- Все строки отмечены как `OK`.
+
+## 4. Импорт образов в offline‑контуре
+
+**Команды:**
 ```bash
+# локальная загрузка
 docker load -i images.tar
-```
-2. Передайте образы в registry, доступный кластеру.
-3. Установите чарты:
-```bash
-helm upgrade --install animus-cp animus-datapilot-*.tgz -f values-control-plane.yaml
-helm upgrade --install animus-dp animus-dataplane-*.tgz -f values-data-plane.yaml
+
+# публикация в локальный registry
+# пример: registry.local:5000
+cat images.txt
 ```
 
-## 5. Примечания
-- Все образы должны быть digest‑пиннены для воспроизводимости.
-- Для внешних Postgres/S3 используйте значения `database.url` и `minio.*`.
+**Ожидаемый результат:**
+- Все образы доступны по digest.
+
+## 5. Установка в offline‑контуре
+
+**Команды:**
+```bash
+kubectl create namespace animus-system
+
+helm upgrade --install animus-datapilot ./bundle/animus-datapilot-*.tgz \
+  --namespace animus-system \
+  --values values-datapilot.yaml
+
+helm upgrade --install animus-dataplane ./bundle/animus-dataplane-*.tgz \
+  --namespace animus-system \
+  --values values-dataplane.yaml
+```
+
+**Ожидаемый результат:**
+- Под‑ы в `animus-system` в состоянии `Running`.
+- `/readyz` Gateway возвращает `200`.
+
+## 6. Откат
+
+```bash
+helm -n animus-system rollback animus-datapilot
+helm -n animus-system rollback animus-dataplane
+```
+
+## 7. Диагностика при сбое
+
+```bash
+kubectl -n animus-system describe pods
+kubectl -n animus-system logs deploy/animus-datapilot-experiments --tail=200
+kubectl -n animus-system logs deploy/animus-dataplane --tail=200
+```
+
+## 8. Примечания по supply‑chain
+
+- Рекомендуется фиксировать `image.digest` или `image.digests`.
+- Подробные проверки SBOM и уязвимостей: `docs/ops/supply-chain.md`.
