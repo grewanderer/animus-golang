@@ -3,7 +3,6 @@ package testutil
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -91,4 +90,3 @@ func envOr(key, fallback string) string {
 	}
 	return fallback
 }
-
