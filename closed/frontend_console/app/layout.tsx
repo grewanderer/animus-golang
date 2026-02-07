@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from 'next';
+import { Inter } from 'next/font/google';
 
 import './globals.css';
+
+const inter = Inter({ subsets: ['latin', 'cyrillic'], variable: '--font-inter' });
 
 const metadataBase = new URL(
   process.env.NEXT_PUBLIC_SITE_URL ??
@@ -22,7 +25,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ru" data-surface="ops">
+    <html lang="ru" data-surface="ops" className={inter.variable}>
       <body data-surface="ops">{children}</body>
     </html>
   );
