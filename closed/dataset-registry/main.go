@@ -85,6 +85,9 @@ func main() {
 		Store:       roleBindings,
 		Audit:       authAuditAppender,
 		AllowDirect: rbacAllowDirect,
+		RequiredRoleFor: func(r *http.Request) string {
+			return requiredRoleForDatasetRegistry(r)
+		},
 	}
 
 	mux := http.NewServeMux()
@@ -152,6 +155,9 @@ func main() {
 
 	projectResolver := func(r *http.Request, identity auth.Identity) (string, error) {
 		if r.Method == http.MethodPost && r.URL.Path == "/projects" {
+			return "", nil
+		}
+		if r.Method == http.MethodGet && r.URL.Path == "/projects" {
 			return "", nil
 		}
 		return auth.RequireProjectIDResolver([]string{"/healthz", "/readyz"})(r, identity)

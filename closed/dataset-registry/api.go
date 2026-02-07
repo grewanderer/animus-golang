@@ -62,6 +62,7 @@ func newDatasetRegistryAPI(logger *slog.Logger, db *sql.DB, store *minio.Client,
 
 func (api *datasetRegistryAPI) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /projects", api.handleCreateProject)
+	mux.HandleFunc("GET /projects", api.handleListProjects)
 	mux.HandleFunc("GET /projects/{project_id}", api.handleGetProject)
 
 	mux.HandleFunc("GET /datasets", api.handleListDatasets)
@@ -125,6 +126,10 @@ type project struct {
 	Metadata    json.RawMessage `json:"metadata"`
 	CreatedAt   time.Time       `json:"created_at"`
 	CreatedBy   string          `json:"created_by"`
+}
+
+type projectListResponse struct {
+	Projects []project `json:"projects"`
 }
 
 type createDatasetRequest struct {
@@ -193,6 +198,39 @@ func (api *datasetRegistryAPI) handleCreateProject(w http.ResponseWriter, r *htt
 		CreatedAt:   proj.CreatedAt,
 		CreatedBy:   proj.CreatedBy,
 	})
+}
+
+func (api *datasetRegistryAPI) handleListProjects(w http.ResponseWriter, r *http.Request) {
+	identity, ok := auth.IdentityFromContext(r.Context())
+	if !ok || strings.TrimSpace(identity.Subject) == "" {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if api.svc == nil {
+		api.writeError(w, r, http.StatusInternalServerError, "service_unavailable")
+		return
+	}
+
+	limit := clampInt(parseIntQuery(r, "limit", 100), 1, 500)
+	projects, err := api.svc.ListProjects(r.Context(), identity.Subject, limit)
+	if err != nil {
+		api.writeError(w, r, http.StatusInternalServerError, "internal_error")
+		return
+	}
+
+	out := make([]project, 0, len(projects))
+	for _, proj := range projects {
+		metaJSON, _ := json.Marshal(proj.Metadata)
+		out = append(out, project{
+			ProjectID:   proj.ID,
+			Name:        proj.Name,
+			Description: proj.Description,
+			Metadata:    metaJSON,
+			CreatedAt:   proj.CreatedAt,
+			CreatedBy:   proj.CreatedBy,
+		})
+	}
+	api.writeJSON(w, http.StatusOK, projectListResponse{Projects: out})
 }
 
 func (api *datasetRegistryAPI) handleGetProject(w http.ResponseWriter, r *http.Request) {

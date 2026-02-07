@@ -121,6 +121,20 @@ func (s *datasetService) GetProject(ctx context.Context, projectID string) (doma
 	return s.projects.Get(ctx, projectID)
 }
 
+func (s *datasetService) ListProjects(ctx context.Context, createdBy string, limit int) ([]domain.Project, error) {
+	if s == nil || s.projects == nil {
+		return nil, fmt.Errorf("project service not initialized")
+	}
+	createdBy = strings.TrimSpace(createdBy)
+	if createdBy == "" {
+		return nil, fmt.Errorf("created_by is required")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	return s.projects.List(ctx, repo.ProjectFilter{CreatedBy: createdBy, Limit: limit})
+}
+
 func (s *datasetService) CreateDataset(ctx context.Context, projectID string, name string, description string, metadata map[string]any, auditCtx auditContext) (domain.Dataset, error) {
 	if s == nil || s.datasets == nil {
 		return domain.Dataset{}, fmt.Errorf("dataset service not initialized")
