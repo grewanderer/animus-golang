@@ -33,6 +33,11 @@ UI_ENABLED="${ANIMUS_SYSTEM_UI_ENABLED:-0}"
 CONSOLE_DEV="${ANIMUS_CONSOLE_DEV:-1}"
 BUILD_IMAGES="${ANIMUS_SYSTEM_BUILD_IMAGES:-1}"
 IMAGE_TAG="${ANIMUS_IMAGE_TAG:-}"
+AUTH_MODE="${ANIMUS_AUTH_MODE:-oidc}"
+TRAINING_EXECUTOR="${ANIMUS_SYSTEM_TRAINING_EXECUTOR:-kubernetes}"
+TRAINING_NAMESPACE="${ANIMUS_SYSTEM_TRAINING_NAMESPACE:-${NAMESPACE}}"
+TRAINING_JOB_TTL="${ANIMUS_SYSTEM_TRAINING_JOB_TTL_SECONDS:-3600}"
+TRAINING_JOB_SA="${ANIMUS_SYSTEM_TRAINING_JOB_SERVICE_ACCOUNT:-}"
 
 HOST_IP="${ANIMUS_HOST_IP:-}"
 if [[ -z "$HOST_IP" ]]; then
@@ -119,7 +124,7 @@ ensure_port_forward() {
 
 cat >"$VALUES_FILE" <<EOFVALUES
 auth:
-  mode: oidc
+  mode: "${AUTH_MODE}"
   sessionCookieSecure: false
 image:
   tag: "${IMAGE_TAG}"
@@ -140,6 +145,12 @@ console:
   allowedReturnToOrigins:
     - "${PUBLIC_BASE_URL}"
     - "${CONSOLE_UPSTREAM_URL}"
+training:
+  executor: "${TRAINING_EXECUTOR}"
+  k8s:
+    namespace: "${TRAINING_NAMESPACE}"
+    jobTTLSeconds: ${TRAINING_JOB_TTL}
+    jobServiceAccount: "${TRAINING_JOB_SA}"
 ui:
   enabled: $( [[ "$UI_ENABLED" == "1" ]] && echo true || echo false )
 postgres:
