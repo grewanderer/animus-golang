@@ -18,7 +18,7 @@ export GOCACHE := $(CACHE_DIR)/go-build
 export GOMODCACHE := $(CACHE_DIR)/go-mod
 export GOTMPDIR := $(CACHE_DIR)/go-tmp
 
-.PHONY: bootstrap fmt test integrations-test dr-validate lint build openapi-lint openapi-compat guardrails-check dev demo demo-smoke demo-down e2e e2e-full system-test sbom vuln-scan supply-chain helm-images sast-scan dep-scan integration-up integration-down system-up system-down system-prod-up system-prod-down system-prod-health make-up-prod make-prod-up ui-build ui-test full-stack artifacts-collect
+.PHONY: bootstrap fmt test integrations-test dr-validate lint build openapi-lint openapi-compat guardrails-check dev demo demo-smoke demo-down e2e e2e-full system-test sbom vuln-scan supply-chain helm-images sast-scan dep-scan integration-up integration-down system-up system-down system-prod-up system-prod-down system-prod-health make-up-prod make-prod-up ui-build ui-test full-stack artifacts-collect images-build
 
 bootstrap:
 	@mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(GOTMPDIR)"
@@ -112,6 +112,9 @@ ui-build:
 
 ui-test:
 	@cd closed/frontend_console && NEXT_PUBLIC_SITE_URL="$${NEXT_PUBLIC_SITE_URL:-http://localhost:3001}" npm run test
+
+images-build:
+	@./scripts/build_images.sh
 
 system-up:
 	@./scripts/kind_up.sh

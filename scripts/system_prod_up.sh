@@ -31,6 +31,7 @@ POSTGRES_PORT="${ANIMUS_SYSTEM_POSTGRES_PORT:-15432}"
 CONSOLE_PORT="${ANIMUS_CONSOLE_PORT:-3001}"
 UI_ENABLED="${ANIMUS_SYSTEM_UI_ENABLED:-0}"
 CONSOLE_DEV="${ANIMUS_CONSOLE_DEV:-1}"
+BUILD_IMAGES="${ANIMUS_SYSTEM_BUILD_IMAGES:-1}"
 
 HOST_IP="${ANIMUS_HOST_IP:-}"
 if [[ -z "$HOST_IP" ]]; then
@@ -49,6 +50,15 @@ VALUES_FILE="${CACHE_DIR}/system_prod_values.yaml"
 CHART_DIR="${ROOT_DIR}/closed/deploy/helm/animus-datapilot"
 CHART_WORK_DIR="${CACHE_DIR}/animus-datapilot-chart"
 MIGRATIONS_SRC="${ROOT_DIR}/closed/migrations"
+
+if [[ "$BUILD_IMAGES" == "1" ]]; then
+  require_bin make
+  if [[ "$UI_ENABLED" == "1" ]]; then
+    ANIMUS_BUILD_UI=1 make images-build
+  else
+    ANIMUS_BUILD_UI=0 make images-build
+  fi
+fi
 
 sync_chart_migrations() {
   rm -rf "$CHART_WORK_DIR"
